@@ -64,15 +64,46 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      - name: Publish framework-dependent (small) exe
+        run: |
+          dotnet publish DunhillPrintStudio.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained false `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:EnableCompressionInSingleFile=true `
+            -p:DebugType=embedded `
+            --verbosity normal 2>&1 | tee publish-small.log
+
+      - name: Verify small exe exists
+        shell: pwsh
+        run: |
+          $exe = "bin\Release\net8.0-windows10.0.19041.0\win-x64\publish\DunhillPrintStudio.exe"
+          if (-not (Test-Path $exe)) {
+            Write-Error "Framework-dependent build did not produce expected exe at $exe"
+            exit 1
+          }
+          $size = [math]::Round((Get-Item $exe).Length / 1KB, 0)
+          Write-Host "Built DunhillPrintStudio.exe ($size KB — framework-dependent, requires .NET 8 Desktop Runtime)"
+
+      - name: Upload framework-dependent exe artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DunhillPrintStudio-fxdep
+          path: bin\Release\net8.0-windows10.0.19041.0\win-x64\publish\DunhillPrintStudio.exe
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Upload build logs (always)
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: build-logs
+          name: build-logs-fxdep
           path: |
-            restore.log
             build.log
             publish.log
+            publish-small.log
           if-no-files-found: ignore
           retention-days: 7
 
