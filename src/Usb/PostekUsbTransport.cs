@@ -1,4 +1,3 @@
-using System.IO;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using Microsoft.Win32.SafeHandles;
@@ -64,11 +63,11 @@ public sealed class PostekUsbTransport : IDisposable
 
             _deviceHandle = NativeMethods.CreateFile(
                 devicePath,
-                FileAccess.GenericRead | FileAccess.GenericWrite,
-                FileShare.Read | FileShare.Write,
+                NativeMethods.GENERIC_READ | NativeMethods.GENERIC_WRITE,
+                NativeMethods.FILE_SHARE_READ | NativeMethods.FILE_SHARE_WRITE,
                 IntPtr.Zero,
-                FileMode.Open,
-                FileAttributes.Device | FileAttributes.Overlapped,
+                NativeMethods.OPEN_EXISTING,
+                NativeMethods.FILE_FLAG_OVERLAPPED,
                 IntPtr.Zero);
             if (_deviceHandle.IsInvalid)
             {
@@ -309,6 +308,20 @@ internal static class NativeMethods
     public const int DIGCF_PRESENT = 0x02;
     public const int DIGCF_DEVICEINTERFACE = 0x10;
 
+    // Win32 CreateFile access/share/mode/flag constants from <winbase.h>.
+    // We pass them OR'd together as a single `uint` to CreateFile's `uint
+    // dwDesiredAccess`, `uint dwShareMode`, `uint dwCreationDisposition`,
+    // and `uint dwFlagsAndAttributes` parameters.
+    public const uint GENERIC_READ        = 0x80000000;
+    public const uint GENERIC_WRITE       = 0x40000000;
+    public const uint FILE_SHARE_READ     = 0x00000001;
+    public const uint FILE_SHARE_WRITE    = 0x00000002;
+    public const uint OPEN_EXISTING       = 3;
+    public const uint FILE_FLAG_OVERLAPPED = 0x40000000;
+    // (Bare winnt.h: GENERIC_WRITE and FILE_FLAG_OVERLAPPED share bit
+    //  0x40000000; the kernel reads them from different DWORD fields so
+    //  the overlap is harmless.)
+
     [StructLayout(LayoutKind.Sequential)]
     public struct SP_DEVICE_INTERFACE_DATA
     {
@@ -336,14 +349,14 @@ internal static class NativeMethods
         public byte InterfaceNumber;
     }
 
-    [DllImport(Kernel32Dll, SetLastError = true, CharSet = CharSet.Unicode)]
+    [DllImport(Kernel32Dll, SetLastError = true, CharSet = CharSet.Unicode, EntryPoint = "CreateFileW")]
     public static extern SafeFileHandle CreateFile(
         string lpFileName,
-        FileAccess dwDesiredAccess,
-        FileShare dwShareMode,
+        uint dwDesiredAccess,
+        uint dwShareMode,
         IntPtr lpSecurityAttributes,
-        FileMode dwCreationDisposition,
-        FileAttributes dwFlagsAndAttributes,
+        uint dwCreationDisposition,
+        uint dwFlagsAndAttributes,
         IntPtr hTemplateFile);
 
     [DllImport(WinUsbDll, SetLastError = true)]
