@@ -295,6 +295,7 @@ public sealed class PostekUsbTransport : IDisposable
 
         foreach (var classGuid in new[] { WinUsbClassGuid, UsbDeviceClassGuid, HidClassGuid })
         {
+            var guidLocal = classGuid;
             var devInfo = NativeMethods.SetupDiGetClassDevs(
                 IntPtr.Zero, "USB", IntPtr.Zero,
                 NativeMethods.DIGCF_PRESENT | NativeMethods.DIGCF_DEVICEINTERFACE);
@@ -306,7 +307,7 @@ public sealed class PostekUsbTransport : IDisposable
             };
             int idx = 0;
             while (NativeMethods.SetupDiEnumDeviceInterfaces(
-                       devInfo, IntPtr.Zero, ref classGuid, idx++, ref iface))
+                       devInfo, IntPtr.Zero, ref guidLocal, idx++, ref iface))
             {
                 var detailProbe = default(NativeMethods.SP_DEVICE_INTERFACE_DETAIL_DATA);
                 NativeMethods.SetupDiGetDeviceInterfaceDetail(
@@ -316,7 +317,7 @@ public sealed class PostekUsbTransport : IDisposable
                     cbSize = Marshal.SizeOf<NativeMethods.SP_DEVICE_INTERFACE_DETAIL_DATA>()
                 };
                 if (!NativeMethods.SetupDiGetDeviceInterfaceDetail(
-                        devInfo, ref iface, ref detail, required, out _, IntPtr.Zero))
+                        devInfo, ref iface, ref detail, (uint)required, out _, IntPtr.Zero))
                     continue;
 
                 var path = detail.DevicePath ?? "";
@@ -350,6 +351,7 @@ public sealed class PostekUsbTransport : IDisposable
         ushort vid,
         HashSet<ushort> accept)
     {
+        var guidLocal = classGuid;
         var devInfo = NativeMethods.SetupDiGetClassDevs(
             IntPtr.Zero, "USB", IntPtr.Zero,
             NativeMethods.DIGCF_PRESENT | NativeMethods.DIGCF_DEVICEINTERFACE);
@@ -361,7 +363,7 @@ public sealed class PostekUsbTransport : IDisposable
         };
         int idx = 0;
         while (NativeMethods.SetupDiEnumDeviceInterfaces(
-                   devInfo, IntPtr.Zero, ref classGuid, idx++, ref iface))
+                   devInfo, IntPtr.Zero, ref guidLocal, idx++, ref iface))
         {
             var detailProbe = default(NativeMethods.SP_DEVICE_INTERFACE_DETAIL_DATA);
             NativeMethods.SetupDiGetDeviceInterfaceDetail(
@@ -371,7 +373,7 @@ public sealed class PostekUsbTransport : IDisposable
                 cbSize = Marshal.SizeOf<NativeMethods.SP_DEVICE_INTERFACE_DETAIL_DATA>()
             };
             if (!NativeMethods.SetupDiGetDeviceInterfaceDetail(
-                    devInfo, ref iface, ref detail, required, out _, IntPtr.Zero))
+                    devInfo, ref iface, ref detail, (uint)required, out _, IntPtr.Zero))
                 continue;
             var path = detail.DevicePath ?? "";
             if (path.IndexOf($"VID_{vid:X4}", StringComparison.OrdinalIgnoreCase) < 0) continue;
@@ -386,7 +388,7 @@ public sealed class PostekUsbTransport : IDisposable
     private static string TryReadFriendlyName(IntPtr devInfo, ref NativeMethods.SP_DEVICE_INTERFACE_DATA iface, string fallback)
     {
         // SPDRP_FRIENDLYNAME = 0x0000000C
-        var neededSize = 0;
+        uint neededSize = 0;
         NativeMethods.SetupDiGetDeviceRegistryProperty(
             devInfo, ref iface, NativeMethods.SPDRP_FRIENDLYNAME,
             out _, null, 0, out neededSize);
