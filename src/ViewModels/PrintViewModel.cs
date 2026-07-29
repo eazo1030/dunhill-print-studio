@@ -73,7 +73,7 @@ public partial class PrintViewModel : ObservableObject
             {
                 Status = $"Printed {Quantity}x {Sku} at {DateTime.Now:HH:mm:ss}";
                 LastError = null;
-                RecentJobs.Insert(0, $"{DateTime.Now:HH:mm:ss}  {Sku} x{Qty}");
+                RecentJobs.Insert(0, $"{DateTime.Now:HH:mm:ss}  {Sku} x{Quantity}");
                 if (RecentJobs.Count > 20) RecentJobs.RemoveAt(20);
             }
             else
