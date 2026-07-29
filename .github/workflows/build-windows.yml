@@ -64,7 +64,7 @@ jobs:
           retention-days: 30
 
       - name: Attach to release (on tag only)
-        if: startsWith(github.ref, "refs/tags/v")
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: bin\Release\net8.0-windows10.0.19041.0\win-x64\publish\DunhillPrintStudio.exe
