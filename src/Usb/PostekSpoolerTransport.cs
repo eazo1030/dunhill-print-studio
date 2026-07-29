@@ -54,6 +54,8 @@ public sealed class PostekSpoolerTransport : IDisposable
         return true;
     }
 
+    private IntPtr RawHandle => _handle?.DangerousGetHandle() ?? IntPtr.Zero;
+
     public async Task<bool> SendAsync(string pplz, CancellationToken ct = default)
     {
         if (!IsConnected)
@@ -80,7 +82,12 @@ public sealed class PostekSpoolerTransport : IDisposable
 
     private bool WriteRawSync(byte[] payload)
     {
-        var handle = _handle!;
+        var handle = RawHandle;
+        if (handle == IntPtr.Zero)
+        {
+            LastError = "Printer handle is not open.";
+            return false;
+        }
         var docInfo = new WinspoolNativeMethods.DOCINFOW
         {
             cbSize = (uint)Marshal.SizeOf<WinspoolNativeMethods.DOCINFOW>(),
@@ -243,22 +250,22 @@ internal static class WinspoolNativeMethods
 
     [DllImport(WinspoolDll, SetLastError = true)]
     public static extern int StartDocPrinterW(
-        SafeFileHandle hPrinter,
+        IntPtr hPrinter,
         int level,
         ref DOCINFOW di);
 
     [DllImport(WinspoolDll, SetLastError = true)]
-    public static extern bool EndDocPrinter(SafeFileHandle hPrinter);
+    public static extern bool EndDocPrinter(IntPtr hPrinter);
 
     [DllImport(WinspoolDll, SetLastError = true)]
-    public static extern bool StartPagePrinter(SafeFileHandle hPrinter);
+    public static extern bool StartPagePrinter(IntPtr hPrinter);
 
     [DllImport(WinspoolDll, SetLastError = true)]
-    public static extern bool EndPagePrinter(SafeFileHandle hPrinter);
+    public static extern bool EndPagePrinter(IntPtr hPrinter);
 
     [DllImport(WinspoolDll, SetLastError = true)]
     public static extern bool WritePrinter(
-        SafeFileHandle hPrinter,
+        IntPtr hPrinter,
         IntPtr pBuf,
         uint cbBuf,
         out uint pcWritten);
