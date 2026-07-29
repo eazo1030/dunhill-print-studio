@@ -24,7 +24,36 @@
             <!-- LEFT: Printer connection -->
             <Border Padding="20" Margin="0,0,8,0" CornerRadius="8" Background="#FAFAFA">
                 <StackPanel>
-                    <TextBlock Text="Network printer (TCP :9100)" Style="{StaticResource FieldLabel}"/>
+
+                    <TextBlock Text="USB / Spooler printer (Windows print queue)" Style="{StaticResource FieldLabel}"/>
+                    <TextBlock FontSize="11" Foreground="#6B7280" TextWrapping="Wrap" Margin="0,2,0,8"
+                               Text="The Postek Seagull driver creates a Windows print queue when installed. BarTender talks to the printer through that queue. Same path here."/>
+
+                    <DockPanel LastChildFill="False">
+                        <Button DockPanel.Dock="Left" Content="Refresh" Padding="12,6"
+                                Command="{Binding RefreshSpoolerCommand}"/>
+                        <Button DockPanel.Dock="Right" Content="Connect" Padding="12,6" Margin="8,0,0,0"
+                                Command="{Binding ConnectSpoolerCommand}"/>
+                    </DockPanel>
+                    <ListBox ItemsSource="{Binding SpoolerPrinters}"
+                             SelectedItem="{Binding SelectedSpooler}"
+                             Height="120" Margin="0,8,0,0" Padding="6">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel>
+                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
+                                    <TextBlock FontSize="11" Foreground="#6B7280">
+                                        <Run Text="Driver: "/>
+                                        <Run Text="{Binding DriverName}"/>
+                                        <Run Text="  Port: "/>
+                                        <Run Text="{Binding PortName}"/>
+                                    </TextBlock>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+
+                    <TextBlock Text="Network printer (TCP :9100)" Style="{StaticResource FieldLabel}" Margin="0,24,0,4"/>
 
                     <TextBlock Text="Host or IP" Style="{StaticResource FieldLabel}" Margin="0,12,0,4"/>
                     <Grid>
@@ -39,44 +68,21 @@
                     </Grid>
 
                     <StackPanel Orientation="Horizontal" Margin="0,20,0,0">
-                        <Button Content="Connect" Style="{StaticResource PrimaryButton}"
-                                Command="{Binding ConnectCommand}"/>
+                        <Button Content="Connect TCP" Style="{StaticResource PrimaryButton}"
+                                Command="{Binding ConnectTcpCommand}"/>
                         <Button Content="Disconnect" Margin="10,0,0,0" Padding="16,10"
                                 Command="{Binding DisconnectCommand}"/>
                         <Button Content="Print test label" Margin="10,0,0,0" Padding="16,10"
                                 Command="{Binding PrintTestLabelCommand}"/>
                     </StackPanel>
 
-                    <TextBlock Text="USB printer (WinUSB driver)" Style="{StaticResource FieldLabel}" Margin="0,24,0,4"/>
-                    <DockPanel LastChildFill="False">
-                        <Button DockPanel.Dock="Left" Content="Scan" Padding="12,6"
-                                Command="{Binding ScanUsbCommand}"/>
-                        <Button DockPanel.Dock="Right" Content="Connect USB" Padding="12,6" Margin="8,0,0,0"
-                                Command="{Binding ConnectUsbCommand}"/>
-                    </DockPanel>
-                    <ListBox ItemsSource="{Binding UsbDevices}"
-                             SelectedItem="{Binding SelectedUsbDevice}"
-                             Height="180" Margin="0,8,0,0" Padding="6">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <StackPanel>
-                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
-                                    <TextBlock FontSize="11" Foreground="#6B7280">
-                                        <Run Text="VID 0x"/>
-                                        <Run Text="{Binding Vid, StringFormat={}{0:X4}}"/>
-                                        <Run Text="  PID 0x"/>
-                                        <Run Text="{Binding Pid, StringFormat={}{0:X4}}"/>
-                                    </TextBlock>
-                                </StackPanel>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
-                    <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#6B7280" Margin="0,4,0,0"
-                               Text="If your printer isn't listed, run Zadig (Options → List All Devices → pick the printer → target WinUSB → Replace Driver) and click Scan again."/>
-
                     <Border Background="#F3F4F6" Padding="12" Margin="0,16,0,0" CornerRadius="6">
                         <StackPanel>
                             <TextBlock Text="{Binding Status}" FontWeight="SemiBold"/>
+                            <TextBlock Foreground="#6B7280" FontSize="12" Margin="0,4,0,0">
+                                <Run Text="Mode: "/>
+                                <Run Text="{Binding ConnectionMode, Mode=OneWay}"/>
+                            </TextBlock>
                             <TextBlock Text="{Binding ConnectionDetail}" Foreground="#6B7280" FontSize="12"
                                        Visibility="{Binding ConnectionDetail, Converter={StaticResource StringToVisibility}}"/>
                             <TextBlock Text="{Binding LastError}" Foreground="#DC2626"
@@ -102,16 +108,19 @@
                     <TextBlock TextWrapping="Wrap" Foreground="#6B7280" FontSize="12" Margin="0,16,0,0">
                         The auth token lets this PC pull print jobs from your website
                         and push completion events back. Get it from
-                        <Run FontWeight="SemiBold">Settings → API tokens</Run>
+                        <Run FontWeight="SemiBold">Settings -> API tokens</Run>
                         on dunhill-inventory-service.vercel.app.
                     </TextBlock>
 
                     <Border Background="#FEF3C7" Padding="12" Margin="0,16,0,0" CornerRadius="6">
                         <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="#92400E">
-                            <Run FontWeight="SemiBold">Setup tip:</Run>
-                            Set the printer's LCD to <Run FontWeight="SemiBold">Interface → Ethernet</Run>,
-                            note its IP, then enter it above. No driver install needed —
-                            TCP uses the printer's built-in raw socket port 9100.
+                            <Run FontWeight="SemiBold">USB tip:</Run>
+                            If no Postek printer appears in the list above, install
+                            the printer via <Run FontWeight="SemiBold">Windows Settings
+                            -> Printers &amp; scanners -> Add device</Run>. Use the
+                            Seagull driver from BarTender UL for Postek (it shipped
+                            with the printer CD) or download it from
+                            <Run FontWeight="SemiBold">postekchina.com</Run>.
                         </TextBlock>
                     </Border>
                 </StackPanel>

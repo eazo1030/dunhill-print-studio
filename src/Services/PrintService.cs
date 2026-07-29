@@ -5,21 +5,29 @@ using Dunhill.PrintStudio.Usb;
 namespace Dunhill.PrintStudio.Services;
 
 /// <summary>
-/// Owns the active printer connection (currently TCP only) and exposes a
-/// single <see cref="PrintAsync"/> entry point. UI calls this; UI never
-/// touches the transport directly.
+/// Owns the active printer connection (TCP, WinUSB, or Windows print
+/// spooler) and exposes a single <see cref="PrintAsync"/> entry point. UI
+/// calls this; UI never touches the transport directly.
 ///
-/// USB support was removed in Phase 1 because LibUsbDotNet's 3.x API
-/// diverged significantly from 2.x. To add USB later, use Usb.Net 4.x
-/// or write a P/Invoke wrapper around winusb.dll. The TCP path works
-/// for any ZR300I on a reachable network.
+/// Three transports, three modes:
+///   - <b>Spooler</b> (recommended for USB-attached Postek ZR300I): the
+///     Seagull/Postek driver ships as a Windows print queue. Our app opens
+///     a printer handle, sends raw PPLZ bytes through <c>WritePrinter</c>
+///     with the RAW pass-through data type, and Windows spooler + the
+///     vendor driver convert that to USB bulk on the printer side. Same
+///     mechanism BarTender itself uses. No Zadig, no driver swap.
+///   - <b>TCP :9100</b>: when the printer is on Ethernet. Bidirectional
+///     read-back gives the EPC encode-result feedback (void-and-retry).
+///   - <b>WinUSB</b>: experimental / OEM path. If the operator's vendor
+///     driver is replaced with WinUSB, raw bulk writes go straight to the
+///     endpoints. Limited coverage on a ZR300I — try spooler first.
 /// </summary>
 public sealed class PrintService : IDisposable
 {
     private readonly object _lock = new();
     private PostekTcpTransport? _tcp;
     private PostekUsbTransport? _usb;
-    private string? _currentEndpoint;
+    private PostekSpoolerTransport? _spooler;
 
     public PrinterStatus Status { get; private set; } = new(
         false, null, null, "Not connected", DateTime.UtcNow);
@@ -45,11 +53,10 @@ public sealed class PrintService : IDisposable
                 RaiseStatus();
                 return false;
             }
-            _currentEndpoint = $"TCP {host}:{port}";
             Status = new PrinterStatus(
                 Online: true,
                 Model: "ZR300I (network)",
-                ConnectionType: _currentEndpoint,
+                ConnectionType: $"TCP {host}:{port}",
                 LastError: null,
                 LastChecked: DateTime.UtcNow);
             RaiseStatus();
@@ -57,28 +64,55 @@ public sealed class PrintService : IDisposable
         }
     }
 
-    public bool ConnectUsb(ushort[]? acceptProductIds = null)
+    /// <summary>
+    /// Open the named Windows print queue for raw PPLZ. This is the path
+    /// BarTender detects, and it's the easiest USB-connect story because
+    /// the operator only has to install the printer once via the Seagull
+    /// Driver Wizard (a one-time per-PC setup step).
+    /// </summary>
+    public bool ConnectSpooler(string printerName)
     {
         lock (_lock)
         {
             Disconnect();
-            _usb = new PostekUsbTransport();
-            return UsbOpenAndSubscribe(_usb, acceptProductIds);
+            _spooler = new PostekSpoolerTransport();
+            if (!_spooler.Open(printerName))
+            {
+                LastError = _spooler.LastError;
+                Status = Status with { Online = false, LastError = LastError };
+                _spooler.Dispose();
+                _spooler = null;
+                RaiseStatus();
+                return false;
+            }
+            Status = new PrinterStatus(
+                Online: true,
+                Model: "ZR300I (Windows spooler)",
+                ConnectionType: $"Spooler: {printerName}",
+                LastError: null,
+                LastChecked: DateTime.UtcNow);
+            RaiseStatus();
+            return true;
         }
     }
 
-    /// <summary>
-    /// Open a specific device path returned by
-    /// <see cref="PostekUsbTransport.EnumeratePostekDevices"/>. Same contract
-    /// as <see cref="ConnectUsb(ushort[])"/> but skips the re-enumeration step.
-    /// </summary>
+    /// <summary>Open the first WinUSB-class device that looks like a Postek.</summary>
+    public bool ConnectUsb(ushort[]? acceptProductIds = null)
+        => ConnectUsbInternal(pids: acceptProductIds, devicePath: null);
+
     public bool ConnectUsbPath(string devicePath)
+        => ConnectUsbInternal(pids: null, devicePath: devicePath);
+
+    private bool ConnectUsbInternal(ushort[]? pids, string? devicePath)
     {
         lock (_lock)
         {
             Disconnect();
             _usb = new PostekUsbTransport();
-            if (!_usb.OpenDevice(devicePath))
+            var ok = devicePath is not null
+                ? _usb.OpenDevice(devicePath)
+                : _usb.Open(pids);
+            if (!ok)
             {
                 LastError = _usb.LastError;
                 Status = Status with { Online = false, LastError = LastError };
@@ -87,63 +121,36 @@ public sealed class PrintService : IDisposable
                 RaiseStatus();
                 return false;
             }
-            FinalizeUsbConnect();
+            var pid = _usb.DetectedProductId != 0 ? $" PID 0x{_usb.DetectedProductId:X4}" : "";
+            Status = new PrinterStatus(
+                Online: true,
+                Model: "ZR300I (USB)",
+                ConnectionType: $"USB{pid}",
+                LastError: null,
+                LastChecked: DateTime.UtcNow);
+            RaiseStatus();
             return true;
         }
-    }
-
-    private bool UsbOpenAndSubscribe(PostekUsbTransport usb, ushort[]? pids)
-    {
-        if (!usb.Open(pids))
-        {
-            LastError = usb.LastError;
-            Status = Status with { Online = false, LastError = LastError };
-            usb.Dispose();
-            _usb = null;
-            RaiseStatus();
-            return false;
-        }
-        FinalizeUsbConnect();
-        return true;
-    }
-
-    private void FinalizeUsbConnect()
-    {
-        var pid = _usb!.DetectedProductId != 0 ? $" PID 0x{_usb.DetectedProductId:X4}" : "";
-        var endpoint = $"USB{pid}";
-        Status = new PrinterStatus(
-            Online: true,
-            Model: "ZR300I (USB)",
-            ConnectionType: endpoint,
-            LastError: null,
-            LastChecked: DateTime.UtcNow);
-        RaiseStatus();
     }
 
     public void Disconnect()
     {
         _tcp?.Dispose();
         _usb?.Dispose();
+        _spooler?.Dispose();
         _tcp = null;
         _usb = null;
-        _currentEndpoint = null;
+        _spooler = null;
         Status = Status with { Online = false, ConnectionType = null };
         RaiseStatus();
     }
 
-    /// <summary>
-    /// Print one label. Returns true on success, false on any transport error.
-    /// </summary>
     public async Task<bool> PrintAsync(LabelSpec spec, LabelDimensions dims, CancellationToken ct = default)
     {
         var pplz = PplzBuilder.BuildItemLabel(spec, dims);
         return await SendRawAsync(pplz, ct);
     }
 
-    /// <summary>
-    /// Print a health-check label — useful from the Settings panel to verify
-    /// the connection without needing a real inventory item.
-    /// </summary>
     public async Task<bool> PrintTestLabelAsync(LabelDimensions dims, CancellationToken ct = default)
     {
         var pplz = PplzBuilder.BuildTestLabel(dims);
@@ -152,12 +159,13 @@ public sealed class PrintService : IDisposable
 
     public async Task<byte[]?> ReadStatusAsync(int maxBytes = 64, CancellationToken ct = default)
     {
-        PostekTcpTransport? tcp; PostekUsbTransport? usb;
-        lock (_lock) { tcp = _tcp; usb = _usb; }
+        PostekTcpTransport? tcp; PostekUsbTransport? usb; PostekSpoolerTransport? spooler;
+        lock (_lock) { tcp = _tcp; usb = _usb; spooler = _spooler; }
         try
         {
-            if (tcp != null && tcp.IsConnected) return await tcp.ReadStatusAsync(maxBytes, ct).ConfigureAwait(false);
-            if (usb != null && usb.IsConnected) return await usb.ReadStatusAsync(maxBytes, ct).ConfigureAwait(false);
+            if (tcp is not null && tcp.IsConnected)    return await tcp.ReadStatusAsync(maxBytes, ct).ConfigureAwait(false);
+            if (usb is not null && usb.IsConnected)    return await usb.ReadStatusAsync(maxBytes, ct).ConfigureAwait(false);
+            // spooler path is one-way; returns null
         }
         catch (ObjectDisposedException) { }
         return null;
@@ -165,15 +173,17 @@ public sealed class PrintService : IDisposable
 
     private async Task<bool> SendRawAsync(string pplz, CancellationToken ct)
     {
-        // Snapshot the active transports under the lock, then await OUTSIDE it.
-        PostekTcpTransport? tcp; PostekUsbTransport? usb;
-        lock (_lock) { tcp = _tcp; usb = _usb; }
+        // Snapshot active transports under the lock, then await OUTSIDE it.
+        PostekTcpTransport? tcp; PostekUsbTransport? usb; PostekSpoolerTransport? spooler;
+        lock (_lock) { tcp = _tcp; usb = _usb; spooler = _spooler; }
 
         try
         {
-            if (tcp != null && tcp.IsConnected)
+            if (tcp is not null && tcp.IsConnected)
                 return await tcp.SendAsync(pplz, ct).ConfigureAwait(false);
-            if (usb != null && usb.IsConnected)
+            if (spooler is not null && spooler.IsConnected)
+                return await spooler.SendAsync(pplz, ct).ConfigureAwait(false);
+            if (usb is not null && usb.IsConnected)
                 return await usb.SendAsync(pplz, ct).ConfigureAwait(false);
         }
         catch (ObjectDisposedException)

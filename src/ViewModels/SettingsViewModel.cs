@@ -10,7 +10,6 @@ namespace Dunhill.PrintStudio.ViewModels;
 public partial class SettingsViewModel : ObservableObject
 {
     private readonly PrintService _print;
-    private readonly PostekUsbTransport _usb;
 
     [ObservableProperty] private string tcpHost = "";
     [ObservableProperty] private int tcpPort = 9100;
@@ -22,78 +21,46 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string? printerModel;
     [ObservableProperty] private string? connectionDetail;
 
-    /// <summary>Every USB device visible to Win32 on this machine.</summary>
-    public ObservableCollection<PostekUsbTransport.UsbDeviceInfo> UsbDevices { get; } = new();
-    [ObservableProperty] private PostekUsbTransport.UsbDeviceInfo? selectedUsbDevice;
-    [ObservableProperty] private bool isScanningUsb;
-
-    public SettingsViewModel(PrintService print, PostekUsbTransport usb)
-    {
-        _print = print;
-        _usb = usb;
-    }
-
-    public string ConnectionMode => _print.Status.ConnectionType?.StartsWith("USB") == true ? "USB" : "TCP";
+    /// <summary>Installed Postek print queues, refreshed by RefreshSpooler.</summary>
+    public ObservableCollection<PostekSpoolerTransport.SpoolerPrinterInfo> SpoolerPrinters { get; } = new();
+    [ObservableProperty] private PostekSpoolerTransport.SpoolerPrinterInfo? selectedSpooler;
+    [ObservableProperty] private bool isScanningSpooler;
 
     [RelayCommand]
-    private void ScanUsb()
+    private void RefreshSpooler()
     {
-        if (IsScanningUsb) return;
-        IsScanningUsb = true;
+        if (IsScanningSpooler) return;
+        IsScanningSpooler = true;
         try
         {
-            UsbDevices.Clear();
-            var all = PostekUsbTransport.EnumerateAllUsbDevices();
-            Log($"Scan: EnumerateAllUsbDevices returned {all.Count} devices");
-            foreach (var d in all)
+            SpoolerPrinters.Clear();
+            var all = PostekSpoolerTransport.EnumeratePostekPrinters();
+            Log($"RefreshSpooler: {all.Count} Postek queue(s) found");
+            foreach (var p in all)
             {
-                Log($"  device: vid=0x{d.Vid:X4} pid=0x{d.Pid:X4} name='{d.Name}' path='{d.Path}'");
-                UsbDevices.Add(d);
+                Log($"  queue: name='{p.Name}' driver='{p.DriverName}' port='{p.PortName}' jobs={p.JobCount}");
+                SpoolerPrinters.Add(p);
             }
-
-            if (UsbDevices.Count == 0)
-            {
-                LastError = "No USB devices found. " +
-                             "If your printer is plugged in, try right-click → Run as Administrator on the .exe, then Scan again.";
-            }
+            SelectedSpooler ??= SpoolerPrinters.FirstOrDefault();
+            if (SpoolerPrinters.Count == 0)
+                LastError = "No Postek print queue found. " +
+                             "Click 'Add printer' from Windows Settings to install the Seagull driver for the ZR300I, then Refresh.";
             else
-            {
                 LastError = null;
-                var firstPostek = UsbDevices.FirstOrDefault(d =>
-                    d.Vid == PostekUsbTransport.PostekVendorId);
-                SelectedUsbDevice = firstPostek ?? UsbDevices[0];
-            }
         }
-        finally
-        {
-            IsScanningUsb = false;
-        }
-    }
-
-    private static void Log(string msg)
-    {
-        try
-        {
-            var dir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "DunhillPrintStudio");
-            Directory.CreateDirectory(dir);
-            File.AppendAllText(Path.Combine(dir, "startup.log"),
-                $"[{DateTime.Now:HH:mm:ss.fff}] {msg}\n");
-        }
-        catch { /* swallow */ }
+        finally { IsScanningSpooler = false; }
     }
 
     [RelayCommand]
-    private void ConnectUsb()
+    private void ConnectSpooler()
     {
-        if (SelectedUsbDevice is null)
+        if (SelectedSpooler is null)
         {
-            LastError = "Pick a USB device first, or click Scan.";
-            Status = "Need device";
+            LastError = "Pick a Postek printer from the list, or click Refresh.";
+            Status = "Need printer";
             return;
         }
-        var ok = _print.ConnectUsbPath(SelectedUsbDevice.Path);
+        var ok = _print.ConnectSpooler(SelectedSpooler.Name);
         if (ok)
         {
             IsConnected = true;
@@ -105,13 +72,35 @@ public partial class SettingsViewModel : ObservableObject
         else
         {
             IsConnected = false;
-            LastError = _print.LastError ?? "USB connect failed.";
-            Status = "USB connection failed";
+            LastError = _print.LastError ?? "Spooler connect failed.";
+            Status = "Spooler connection failed";
         }
     }
 
+    public SettingsViewModel(PrintService print)
+    {
+        _print = print;
+        // Best-effort initial fill so the picker isn't empty on first load.
+        try
+        {
+            foreach (var p in PostekSpoolerTransport.EnumeratePostekPrinters())
+                SpoolerPrinters.Add(p);
+            SelectedSpooler ??= SpoolerPrinters.FirstOrDefault();
+        }
+        catch { /* not Windows or no spooler; UI will surface Refresh */ }
+    }
+
+    public string ConnectionMode => _print.Status.ConnectionType switch
+    {
+        null => "Disconnected",
+        var c when c.StartsWith("TCP") => "TCP",
+        var c when c.StartsWith("Spooler") => "Spooler",
+        var c when c.StartsWith("USB") => "USB",
+        _ => "Other"
+    };
+
     [RelayCommand]
-    private async Task ConnectAsync()
+    private async Task ConnectTcpAsync()
     {
         if (string.IsNullOrWhiteSpace(TcpHost))
         {
@@ -156,5 +145,19 @@ public partial class SettingsViewModel : ObservableObject
         var dims = new Pplz.LabelDimensions(812, 1218);
         var ok = await _print.PrintTestLabelAsync(dims);
         Status = ok ? "Test label printed" : $"Test failed: {_print.LastError}";
+    }
+
+    private static void Log(string msg)
+    {
+        try
+        {
+            var dir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "DunhillPrintStudio");
+            Directory.CreateDirectory(dir);
+            File.AppendAllText(Path.Combine(dir, "startup.log"),
+                $"[{DateTime.Now:HH:mm:ss.fff}] {msg}\n");
+        }
+        catch { /* swallow */ }
     }
 }

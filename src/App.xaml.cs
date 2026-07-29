@@ -36,8 +36,15 @@ public partial class App : Application
                 {
                     Log("ConfigureServices: PrintService");
                     services.AddSingleton<PrintService>();
-                    Log("ConfigureServices: USB transport");
-                    services.AddSingleton<PostekUsbTransport>();
+                    // Spooler transport does its work via static enumerators + the
+                    // short-lived wrapper inside PrintService.ConnectSpooler(); no
+                    // singleton needed. WinUSB transport is left registered only
+                    // if it's referenced (future use); it's currently unused from
+                    // the UI so we skip the DI registration.
+                    if (false)
+                    {
+                        services.AddSingleton<PostekUsbTransport>();
+                    }
 
                     Log("ConfigureServices: ViewModels");
                     services.AddTransient<PrintViewModel>();
