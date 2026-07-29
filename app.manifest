@@ -10,6 +10,18 @@
     </windowsSettings>
   </application>
 
+  <!-- WinUSB / libusb access to the ZR300I on USB requires an elevated
+       process. Requesting requireAdministrator here causes Windows to
+       show the UAC prompt on launch; we cannot silently elevate at
+       runtime for SetupAPI/USB device enumeration. -->
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v2">
+    <security>
+      <requestedPrivileges xmlns="urn:schemas-microsoft-com:asm.v3">
+        <requestedExecutionLevel level="requireAdministrator" uiAccess="false"/>
+      </requestedPrivileges>
+    </security>
+  </trustInfo>
+
   <!-- WinUSB / libusb access to the ZR300I on USB -->
   <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
     <application>

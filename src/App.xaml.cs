@@ -29,6 +29,8 @@ public partial class App : Application
 
         try
         {
+            Log($"Elevation: running with admin token = {IsElevated()}");
+
             _host = Host.CreateDefaultBuilder()
                 .ConfigureServices((_, services) =>
                 {
@@ -119,5 +121,12 @@ public partial class App : Application
                 $"[{DateTime.Now:HH:mm:ss.fff}] {msg}\n");
         }
         catch { /* swallow — logging must never crash startup */ }
+    }
+
+    private static bool IsElevated()
+    {
+        using var id = System.Security.Principal.WindowsIdentity.GetCurrent();
+        var principal = new System.Security.Principal.WindowsPrincipal(id);
+        return principal.IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
     }
 }
