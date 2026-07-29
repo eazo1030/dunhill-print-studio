@@ -18,6 +18,8 @@ public sealed class PrintService : IDisposable
 {
     private readonly object _lock = new();
     private PostekTcpTransport? _tcp;
+    private PostekUsbTransport? _usb;
+    private string? _currentEndpoint;
 
     public PrinterStatus Status { get; private set; } = new(
         false, null, null, "Not connected", DateTime.UtcNow);
@@ -43,10 +45,39 @@ public sealed class PrintService : IDisposable
                 RaiseStatus();
                 return false;
             }
+            _currentEndpoint = $"TCP {host}:{port}";
             Status = new PrinterStatus(
                 Online: true,
                 Model: "ZR300I (network)",
-                ConnectionType: $"TCP {host}:{port}",
+                ConnectionType: _currentEndpoint,
+                LastError: null,
+                LastChecked: DateTime.UtcNow);
+            RaiseStatus();
+            return true;
+        }
+    }
+
+    public bool ConnectUsb(ushort[]? acceptProductIds = null)
+    {
+        lock (_lock)
+        {
+            Disconnect();
+            _usb = new PostekUsbTransport();
+            if (!_usb.Open(acceptProductIds))
+            {
+                LastError = _usb.LastError;
+                Status = Status with { Online = false, LastError = LastError };
+                _usb.Dispose();
+                _usb = null;
+                RaiseStatus();
+                return false;
+            }
+            var pid = _usb.DetectedProductId != 0 ? $" PID 0x{_usb.DetectedProductId:X4}" : "";
+            _currentEndpoint = $"USB{pid}";
+            Status = new PrinterStatus(
+                Online: true,
+                Model: "ZR300I (USB)",
+                ConnectionType: _currentEndpoint,
                 LastError: null,
                 LastChecked: DateTime.UtcNow);
             RaiseStatus();
@@ -57,7 +88,10 @@ public sealed class PrintService : IDisposable
     public void Disconnect()
     {
         _tcp?.Dispose();
+        _usb?.Dispose();
         _tcp = null;
+        _usb = null;
+        _currentEndpoint = null;
         Status = Status with { Online = false, ConnectionType = null };
         RaiseStatus();
     }
@@ -81,16 +115,31 @@ public sealed class PrintService : IDisposable
         return await SendRawAsync(pplz, ct);
     }
 
+    public async Task<byte[]?> ReadStatusAsync(int maxBytes = 64, CancellationToken ct = default)
+    {
+        PostekTcpTransport? tcp; PostekUsbTransport? usb;
+        lock (_lock) { tcp = _tcp; usb = _usb; }
+        try
+        {
+            if (tcp != null && tcp.IsConnected) return await tcp.ReadStatusAsync(maxBytes, ct).ConfigureAwait(false);
+            if (usb != null && usb.IsConnected) return await usb.ReadStatusAsync(maxBytes, ct).ConfigureAwait(false);
+        }
+        catch (ObjectDisposedException) { }
+        return null;
+    }
+
     private async Task<bool> SendRawAsync(string pplz, CancellationToken ct)
     {
-        // Snapshot the active transport under the lock, then await OUTSIDE it.
-        PostekTcpTransport? tcp;
-        lock (_lock) { tcp = _tcp; }
+        // Snapshot the active transports under the lock, then await OUTSIDE it.
+        PostekTcpTransport? tcp; PostekUsbTransport? usb;
+        lock (_lock) { tcp = _tcp; usb = _usb; }
 
         try
         {
             if (tcp != null && tcp.IsConnected)
                 return await tcp.SendAsync(pplz, ct).ConfigureAwait(false);
+            if (usb != null && usb.IsConnected)
+                return await usb.SendAsync(pplz, ct).ConfigureAwait(false);
         }
         catch (ObjectDisposedException)
         {
