@@ -56,6 +56,14 @@ jobs:
           $size = [math]::Round((Get-Item $exe).Length / 1MB, 1)
           Write-Host "Built DunhillPrintStudio.exe ($size MB)"
 
+      - name: Upload exe artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DunhillPrintStudio-win-x64
+          path: bin\Release\net8.0-windows10.0.19041.0\win-x64\publish\DunhillPrintStudio.exe
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Upload build logs (always)
         if: always()
         uses: actions/upload-artifact@v4
