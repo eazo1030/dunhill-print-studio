@@ -24,41 +24,9 @@
             <!-- LEFT: Printer connection -->
             <Border Padding="20" Margin="0,0,8,0" CornerRadius="8" Background="#FAFAFA">
                 <StackPanel>
-                    <TextBlock Text="Connection type" Style="{StaticResource FieldLabel}"/>
-                    <ComboBox SelectedItem="{Binding ConnectionType}">
-                        <ComboBoxItem Content="USB"/>
-                        <ComboBoxItem Content="TCP (network)"/>
-                    </ComboBox>
+                    <TextBlock Text="Network printer (TCP :9100)" Style="{StaticResource FieldLabel}"/>
 
-                    <!-- USB panel -->
-                    <StackPanel Margin="0,16,0,0">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="USB devices" Style="{StaticResource FieldLabel}" Grid.Column="0"/>
-                            <Button Grid.Column="1" Content="Refresh" Command="{Binding RefreshUsbCommand}"
-                                    Padding="10,4" Margin="0,-8,0,0"/>
-                        </Grid>
-                        <ListBox ItemsSource="{Binding UsbDevices}" Height="120">
-                            <ListBox.ItemTemplate>
-                                <DataTemplate>
-                                    <StackPanel>
-                                        <TextBlock Text="{Binding ProductName}" FontWeight="SemiBold"/>
-                                        <TextBlock FontSize="11" Foreground="#6B7280">
-                                            <Run Text="{Binding VendorId}"/>
-                                            <Run Text=" / "/>
-                                            <Run Text="{Binding ProductId}"/>
-                                        </TextBlock>
-                                    </StackPanel>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
-                    </StackPanel>
-
-                    <!-- TCP panel -->
-                    <TextBlock Text="Network host" Style="{StaticResource FieldLabel}"/>
+                    <TextBlock Text="Host or IP" Style="{StaticResource FieldLabel}" Margin="0,12,0,4"/>
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
@@ -111,10 +79,10 @@
 
                     <Border Background="#FEF3C7" Padding="12" Margin="0,16,0,0" CornerRadius="6">
                         <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="#92400E">
-                            <Run FontWeight="SemiBold">USB driver note:</Run>
-                            If the printer was installed with the Postek vendor driver
-                            (instead of WinUSB), discovery will fail. Use Zadig to switch
-                            the driver to WinUSB (libusb-win32).
+                            <Run FontWeight="SemiBold">Setup tip:</Run>
+                            Set the printer's LCD to <Run FontWeight="SemiBold">Interface → Ethernet</Run>,
+                            note its IP, then enter it above. No driver install needed —
+                            TCP uses the printer's built-in raw socket port 9100.
                         </TextBlock>
                     </Border>
                 </StackPanel>

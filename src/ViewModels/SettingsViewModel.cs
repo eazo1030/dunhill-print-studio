@@ -1,8 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Dunhill.PrintStudio.Models;
-using Dunhill.PrintStudio.Usb;
-using System.Collections.ObjectModel;
+using Dunhill.PrintStudio.Services;
 
 namespace Dunhill.PrintStudio.ViewModels;
 
@@ -12,7 +10,6 @@ public partial class SettingsViewModel : ObservableObject
 
     public SettingsViewModel(PrintService print) { _print = print; }
 
-    [ObservableProperty] private string connectionType = "USB";   // "USB" or "TCP"
     [ObservableProperty] private string tcpHost = "";
     [ObservableProperty] private int tcpPort = 9100;
     [ObservableProperty] private string? authToken = "";
@@ -23,25 +20,17 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string? printerModel;
     [ObservableProperty] private string? connectionDetail;
 
-    public ObservableCollection<PostekDeviceInfo> UsbDevices { get; } = new();
-
-    [RelayCommand]
-    private void RefreshUsb()
-    {
-        UsbDevices.Clear();
-        foreach (var d in _print.DiscoverUsb()) UsbDevices.Add(d);
-        Status = UsbDevices.Count == 0
-            ? "No Postek printers found on USB"
-            : $"Found {UsbDevices.Count} device(s)";
-    }
-
     [RelayCommand]
     private async Task ConnectAsync()
     {
-        bool ok = ConnectionType == "USB"
-            ? _print.ConnectUsb()
-            : _print.ConnectTcp(TcpHost, TcpPort);
+        if (string.IsNullOrWhiteSpace(TcpHost))
+        {
+            LastError = "Enter a hostname or IP for the printer.";
+            Status = "Need host";
+            return;
+        }
 
+        var ok = _print.ConnectTcp(TcpHost, TcpPort);
         if (ok)
         {
             IsConnected = true;
@@ -75,7 +64,7 @@ public partial class SettingsViewModel : ObservableObject
             LastError = "Connect first.";
             return;
         }
-        var dims = new LabelDimensions(812, 1218);
+        var dims = new Pplz.LabelDimensions(812, 1218);
         var ok = await _print.PrintTestLabelAsync(dims);
         Status = ok ? "Test label printed" : $"Test failed: {_print.LastError}";
     }

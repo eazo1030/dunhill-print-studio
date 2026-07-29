@@ -5,14 +5,18 @@ using Dunhill.PrintStudio.Usb;
 namespace Dunhill.PrintStudio.Services;
 
 /// <summary>
-/// Owns the active printer connection (USB or TCP) and exposes a single
-/// <see cref="PrintAsync"/> entry point. UI calls this; UI never touches
-/// the USB/TCP transports directly. Makes mocking easy.
+/// Owns the active printer connection (currently TCP only) and exposes a
+/// single <see cref="PrintAsync"/> entry point. UI calls this; UI never
+/// touches the transport directly.
+///
+/// USB support was removed in Phase 1 because LibUsbDotNet's 3.x API
+/// diverged significantly from 2.x. To add USB later, use Usb.Net 4.x
+/// or write a P/Invoke wrapper around winusb.dll. The TCP path works
+/// for any ZR300I on a reachable network.
 /// </summary>
 public sealed class PrintService : IDisposable
 {
     private readonly object _lock = new();
-    private PostekUsbTransport? _usb;
     private PostekTcpTransport? _tcp;
 
     public PrinterStatus Status { get; private set; } = new(
@@ -22,38 +26,7 @@ public sealed class PrintService : IDisposable
 
     public string? LastError { get; private set; }
 
-    private void RaiseStatus()
-    {
-        StatusChanged?.Invoke(this, Status);
-    }
-
-    public IReadOnlyList<PostekDeviceInfo> DiscoverUsb() => PostekUsbTransport.Enumerate();
-
-    public bool ConnectUsb(ushort? productId = null)
-    {
-        lock (_lock)
-        {
-            Disconnect();
-            _usb = new PostekUsbTransport();
-            if (!_usb.Open(productId))
-            {
-                LastError = _usb.LastError;
-                Status = Status with { Online = false, LastError = LastError };
-                _usb.Dispose();
-                _usb = null;
-                RaiseStatus();
-                return false;
-            }
-            Status = new PrinterStatus(
-                Online: true,
-                Model: _usb.ConnectedModel,
-                ConnectionType: "USB",
-                LastError: null,
-                LastChecked: DateTime.UtcNow);
-            RaiseStatus();
-            return true;
-        }
-    }
+    private void RaiseStatus() => StatusChanged?.Invoke(this, Status);
 
     public bool ConnectTcp(string host, int port = 9100)
     {
@@ -83,8 +56,8 @@ public sealed class PrintService : IDisposable
 
     public void Disconnect()
     {
-        _usb?.Dispose(); _usb = null;
-        _tcp?.Dispose(); _tcp = null;
+        _tcp?.Dispose();
+        _tcp = null;
         Status = Status with { Online = false, ConnectionType = null };
         RaiseStatus();
     }
@@ -111,25 +84,16 @@ public sealed class PrintService : IDisposable
     private async Task<bool> SendRawAsync(string pplz, CancellationToken ct)
     {
         // Snapshot the active transport under the lock, then await OUTSIDE it.
-        // Never block the threadpool inside a lock holding section — that's a deadlock factory.
-        PostekUsbTransport? usb;
         PostekTcpTransport? tcp;
-        lock (_lock)
-        {
-            usb = _usb;
-            tcp = _tcp;
-        }
+        lock (_lock) { tcp = _tcp; }
 
         try
         {
-            if (usb != null && usb.IsConnected)
-                return await usb.SendAsync(pplz).ConfigureAwait(false);
             if (tcp != null && tcp.IsConnected)
                 return await tcp.SendAsync(pplz, ct).ConfigureAwait(false);
         }
         catch (ObjectDisposedException)
         {
-            // Transport got disposed between snapshot and call. Treat as offline.
             LastError = "Printer disconnected during print.";
             return false;
         }
