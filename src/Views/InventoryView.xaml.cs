@@ -5,9 +5,9 @@ namespace Dunhill.PrintStudio.Views;
 
 public partial class InventoryView : UserControl
 {
-    public InventoryView(InventoryViewModel vm)
+    public InventoryView()
     {
         InitializeComponent();
-        DataContext = vm;
+        DataContext = App.Services.GetRequiredService<InventoryViewModel>();
     }
 }

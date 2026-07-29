@@ -5,9 +5,9 @@ namespace Dunhill.PrintStudio.Views;
 
 public partial class HistoryView : UserControl
 {
-    public HistoryView(HistoryViewModel vm)
+    public HistoryView()
     {
         InitializeComponent();
-        DataContext = vm;
+        DataContext = App.Services.GetRequiredService<HistoryViewModel>();
     }
 }

@@ -5,9 +5,9 @@ namespace Dunhill.PrintStudio.Views;
 
 public partial class QueueView : UserControl
 {
-    public QueueView(QueueViewModel vm)
+    public QueueView()
     {
         InitializeComponent();
-        DataContext = vm;
+        DataContext = App.Services.GetRequiredService<QueueViewModel>();
     }
 }

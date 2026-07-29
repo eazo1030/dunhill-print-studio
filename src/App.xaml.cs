@@ -13,6 +13,13 @@ public partial class App : Application
 {
     private readonly IHost _host;
 
+    /// <summary>
+    /// Static accessor for the DI service provider. Used by views that need
+    /// to resolve their ViewModels without going through constructor injection
+    /// (since WPF's XAML loader uses the default parameterless constructor).
+    /// </summary>
+    public static IServiceProvider Services { get; private set; } = null!;
+
     public App()
     {
         // Log every step of startup so silent failures have a paper trail.
@@ -50,6 +57,7 @@ public partial class App : Application
                     services.AddSingleton<MainWindow>();
                 })
                 .Build();
+            Services = _host.Services;
             Log("Host built OK");
         }
         catch (Exception ex)
