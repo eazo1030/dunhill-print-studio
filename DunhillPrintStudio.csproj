@@ -7,13 +7,9 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
-    <EnableDefaultPageItems>false</EnableDefaultPageItems>
-    <EnableDefaultApplicationDefinition>false</EnableDefaultApplicationDefinition>
     <RootNamespace>Dunhill.PrintStudio</RootNamespace>
     <AssemblyName>DunhillPrintStudio</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <StartupObject>Dunhill.PrintStudio.Program</StartupObject>
-    <EnableDefaultApplicationDefinition>false</EnableDefaultApplicationDefinition>
 
     <!-- Single-file publish settings -->
     <PublishSingleFile>true</PublishSingleFile>
@@ -42,37 +38,6 @@
     <None Update="appsettings.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-  </ItemGroup>
-
-  <ItemGroup>
-    <ApplicationDefinition Include="src\App.xaml">
-      <Generator>MSBuild:Compile</Generator>
-      <SubType>Designer</SubType>
-    </ApplicationDefinition>
-    <Page Include="src\MainWindow.xaml">
-      <Generator>MSBuild:Compile</Generator>
-      <SubType>Designer</SubType>
-    </Page>
-    <Page Include="src\Views\PrintView.xaml">
-      <Generator>MSBuild:Compile</Generator>
-      <SubType>Designer</SubType>
-    </Page>
-    <Page Include="src\Views\SettingsView.xaml">
-      <Generator>MSBuild:Compile</Generator>
-      <SubType>Designer</SubType>
-    </Page>
-    <Page Include="src\Views\InventoryView.xaml">
-      <Generator>MSBuild:Compile</Generator>
-      <SubType>Designer</SubType>
-    </Page>
-    <Page Include="src\Views\QueueView.xaml">
-      <Generator>MSBuild:Compile</Generator>
-      <SubType>Designer</SubType>
-    </Page>
-    <Page Include="src\Views\HistoryView.xaml">
-      <Generator>MSBuild:Compile</Generator>
-      <SubType>Designer</SubType>
-    </Page>
   </ItemGroup>
 
 </Project>

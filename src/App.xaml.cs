@@ -1,10 +1,11 @@
+using System.IO;
+using System.Windows;
 using Dunhill.PrintStudio.Services;
 using Dunhill.PrintStudio.Sync;
 using Dunhill.PrintStudio.ViewModels;
 using Dunhill.PrintStudio.Views;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using System.Windows;
 
 namespace Dunhill.PrintStudio;
 
@@ -14,64 +15,98 @@ public partial class App : Application
 
     public App()
     {
-        _host = Host.CreateDefaultBuilder()
-            .ConfigureServices((_, services) =>
-            {
-                // Singletons: print service owns the printer handle
-                services.AddSingleton<PrintService>();
+        // Log every step of startup so silent failures have a paper trail.
+        // WPF WinExe has no console — file logging is the only way to see what happened.
+        Log("App.ctor start");
 
-                // ViewModels (transient — fresh state per tab open)
-                services.AddTransient<PrintViewModel>();
-                services.AddTransient<SettingsViewModel>();
-                services.AddTransient<QueueViewModel>();
-                services.AddTransient<HistoryViewModel>();
-                services.AddTransient<InventoryViewModel>();
+        try
+        {
+            _host = Host.CreateDefaultBuilder()
+                .ConfigureServices((_, services) =>
+                {
+                    Log("ConfigureServices: PrintService");
+                    services.AddSingleton<PrintService>();
 
-                // Views (need to be transient so each tab gets a fresh VM)
-                services.AddTransient<PrintView>();
-                services.AddTransient<SettingsView>();
-                services.AddTransient<QueueView>();
-                services.AddTransient<HistoryView>();
-                services.AddTransient<InventoryView>();
+                    Log("ConfigureServices: ViewModels");
+                    services.AddTransient<PrintViewModel>();
+                    services.AddTransient<SettingsViewModel>();
+                    services.AddTransient<QueueViewModel>();
+                    services.AddTransient<HistoryViewModel>();
+                    services.AddTransient<InventoryViewModel>();
 
-                // Background services
-                services.AddHttpClient("dunhill");
-                services.AddSingleton(new SyncConfig());
-                services.AddHostedService<CloudSyncService>();
+                    Log("ConfigureServices: Views");
+                    services.AddTransient<PrintView>();
+                    services.AddTransient<SettingsView>();
+                    services.AddTransient<QueueView>();
+                    services.AddTransient<HistoryView>();
+                    services.AddTransient<InventoryView>();
 
-                // Main window
-                services.AddSingleton<MainWindow>();
-            })
-            .Build();
+                    Log("ConfigureServices: HttpClient + Sync");
+                    services.AddHttpClient("dunhill");
+                    services.AddSingleton(new SyncConfig());
+                    services.AddHostedService<CloudSyncService>();
+
+                    Log("ConfigureServices: MainWindow");
+                    services.AddSingleton<MainWindow>();
+                })
+                .Build();
+            Log("Host built OK");
+        }
+        catch (Exception ex)
+        {
+            Log("Host build FAILED: " + ex);
+            throw;
+        }
     }
 
     protected override async void OnStartup(StartupEventArgs e)
     {
-        await _host.StartAsync();
+        Log("OnStartup start");
+        try
+        {
+            await _host.StartAsync();
+            Log("Host started");
 
-        // Phase 2: load settings from disk and pass to CloudSyncService
-        // var cfg = JsonStore<AppSettings>.LoadAsync(DataPaths.Settings);
+            var main = _host.Services.GetRequiredService<MainWindow>();
+            Log("MainWindow resolved, calling Show()");
+            main.Show();
+            Log("MainWindow shown");
 
-        var main = _host.Services.GetRequiredService<MainWindow>();
-        main.Show();
-
-        base.OnStartup(e);
+            base.OnStartup(e);
+            Log("OnStartup complete");
+        }
+        catch (Exception ex)
+        {
+            Log("OnStartup FAILED: " + ex);
+            MessageBox.Show(
+                "Failed to start Dunhill Print Studio:\n\n" + ex.Message +
+                "\n\nDetails written to " + LogPath,
+                "Startup error", MessageBoxButton.OK, MessageBoxImage.Error);
+            Shutdown(1);
+        }
     }
 
     protected override async void OnExit(ExitEventArgs e)
     {
+        Log("OnExit");
         using (_host) await _host.StopAsync();
         base.OnExit(e);
     }
-}
 
-public static class Program
-{
-    [STAThread]
-    public static int Main(string[] args)
+    // ---- file-based startup logging ----
+    private static readonly string LogPath = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "DunhillPrintStudio",
+        "startup.log");
+
+    private static void Log(string msg)
     {
-        var app = new App();
-        app.InitializeComponent();
-        return app.Run();
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(LogPath)!);
+            File.AppendAllText(LogPath,
+                $"[{DateTime.Now:HH:mm:ss.fff}] {msg}\n");
+        }
+        catch { /* swallow — logging must never crash startup */ }
     }
 }
