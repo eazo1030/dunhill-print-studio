@@ -23,7 +23,7 @@ namespace Dunhill.PrintStudio.Usb;
 [SupportedOSPlatform("windows")]
 public sealed class PostekUsbTransport : IDisposable
 {
-    private const ushort PostekVendorId = 0x0FE6;
+    public const ushort PostekVendorId = 0x0FE6;
 
     // Common ZR300I family PIDs across firmware variants. Add yours here
     // if your unit reports a different value after Zadig.
@@ -242,6 +242,16 @@ public sealed class PostekUsbTransport : IDisposable
             out var pid) ? pid : (ushort)0;
     }
 
+    private static ushort ParseVidFromInstancePath(string path)
+    {
+        var i = path.IndexOf("VID_", StringComparison.OrdinalIgnoreCase);
+        if (i < 0 || i + 8 > path.Length) return 0;
+        return ushort.TryParse(path.Substring(i + 4, 4),
+            System.Globalization.NumberStyles.HexNumber,
+            System.Globalization.CultureInfo.InvariantCulture,
+            out var v) ? v : (ushort)0;
+    }
+
     private static string? FindPostekDevicePath(ushort vid, ushort[] acceptPids)
     {
         var (paths, _) = EnumeratePostekDevices(vid, acceptPids);
@@ -249,27 +259,106 @@ public sealed class PostekUsbTransport : IDisposable
     }
 
     /// <summary>
-    /// Return every USB device path matching the given VID / accepted PIDs, plus
-    /// a parallel dictionary keyed by path with the parsed PID. Used by
-    /// SettingsViewModel to populate the "Available USB devices" list.
+    /// Return every Postek (VID/PID-matching) USB device path + parsed PID.
+    /// Used by <see cref="Open"/> when the caller doesn't already have a path.
     /// </summary>
     public static (IReadOnlyList<string> Paths, IReadOnlyDictionary<string, ushort> PidsByPath)
         EnumeratePostekDevices(ushort vid, ushort[] acceptPids)
     {
         var paths = new List<string>();
         var pids  = new Dictionary<string, ushort>();
-        var classGuid = new Guid("{dee8247e-ee62-434a-bf9a-88affaf91b04}");
+        var accept = new HashSet<ushort>(acceptPids);
 
+        // WinUSB class — well-behaved when Zadig installed WinUSB for the device.
+        AddPathsByVidPid(WinUsbClassGuid, paths, pids, vid, accept);
+
+        // Fallback to the raw USB device class; this is what Win32 sees for
+        // every USB device on the bus, including ones using a vendor INF.
+        if (paths.Count == 0)
+            AddPathsByVidPid(UsbDeviceClassGuid, paths, pids, vid, accept);
+
+        return (paths, pids);
+    }
+
+    /// <summary>
+    /// Return every USB device visible to Win32 on this machine — across the
+    /// WinUSB class GUID, the raw USB device-interface class GUID, and the
+    /// HID class. The caller decides which one to connect to. No VID filter,
+    /// so the operator sees every device, not only those matching a hard-coded
+    /// VID. Each record includes the device's friendly name (e.g.
+    /// "Postek ZR300I") which is what makes this list usable to a human.
+    /// </summary>
+    public static IReadOnlyList<UsbDeviceInfo> EnumerateAllUsbDevices()
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var results = new List<UsbDeviceInfo>();
+
+        foreach (var classGuid in new[] { WinUsbClassGuid, UsbDeviceClassGuid, HidClassGuid })
+        {
+            var devInfo = NativeMethods.SetupDiGetClassDevs(
+                IntPtr.Zero, "USB", IntPtr.Zero,
+                NativeMethods.DIGCF_PRESENT | NativeMethods.DIGCF_DEVICEINTERFACE);
+            if (devInfo.ToInt64() == -1) continue;
+
+            var iface = new NativeMethods.SP_DEVICE_INTERFACE_DATA
+            {
+                cbSize = Marshal.SizeOf<NativeMethods.SP_DEVICE_INTERFACE_DATA>()
+            };
+            int idx = 0;
+            while (NativeMethods.SetupDiEnumDeviceInterfaces(
+                       devInfo, IntPtr.Zero, ref classGuid, idx++, ref iface))
+            {
+                var detailProbe = default(NativeMethods.SP_DEVICE_INTERFACE_DETAIL_DATA);
+                NativeMethods.SetupDiGetDeviceInterfaceDetail(
+                    devInfo, ref iface, ref detailProbe, 0, out var required, IntPtr.Zero);
+                var detail = new NativeMethods.SP_DEVICE_INTERFACE_DETAIL_DATA
+                {
+                    cbSize = Marshal.SizeOf<NativeMethods.SP_DEVICE_INTERFACE_DETAIL_DATA>()
+                };
+                if (!NativeMethods.SetupDiGetDeviceInterfaceDetail(
+                        devInfo, ref iface, ref detail, required, out _, IntPtr.Zero))
+                    continue;
+
+                var path = detail.DevicePath ?? "";
+                if (string.IsNullOrEmpty(path)) continue;
+                if (!seen.Add(path)) continue;
+
+                var vid = ParseVidFromInstancePath(path);
+                var pid = ParseProductIdFromInstancePath(path);
+                var name = TryReadFriendlyName(devInfo, ref iface, path);
+                results.Add(new UsbDeviceInfo(path, vid, pid, name));
+            }
+            NativeMethods.SetupDiDestroyDeviceInfoList(devInfo);
+        }
+
+        // Stable order: by name, then VID, then PID. Familiar to a human.
+        results.Sort((a, b) =>
+        {
+            var c = string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase);
+            if (c != 0) return c;
+            c = a.Vid.CompareTo(b.Vid);
+            if (c != 0) return c;
+            return a.Pid.CompareTo(b.Pid);
+        });
+        return results;
+    }
+
+    private static void AddPathsByVidPid(
+        Guid classGuid,
+        List<string> paths,
+        Dictionary<string, ushort> pids,
+        ushort vid,
+        HashSet<ushort> accept)
+    {
         var devInfo = NativeMethods.SetupDiGetClassDevs(
             IntPtr.Zero, "USB", IntPtr.Zero,
             NativeMethods.DIGCF_PRESENT | NativeMethods.DIGCF_DEVICEINTERFACE);
-        if (devInfo.ToInt64() == -1) return (paths, pids);
+        if (devInfo.ToInt64() == -1) return;
 
         var iface = new NativeMethods.SP_DEVICE_INTERFACE_DATA
         {
             cbSize = Marshal.SizeOf<NativeMethods.SP_DEVICE_INTERFACE_DATA>()
         };
-
         int idx = 0;
         while (NativeMethods.SetupDiEnumDeviceInterfaces(
                    devInfo, IntPtr.Zero, ref classGuid, idx++, ref iface))
@@ -286,48 +375,41 @@ public sealed class PostekUsbTransport : IDisposable
                 continue;
             var path = detail.DevicePath ?? "";
             if (path.IndexOf($"VID_{vid:X4}", StringComparison.OrdinalIgnoreCase) < 0) continue;
-            foreach (var pid in acceptPids)
-            {
-                if (path.IndexOf($"PID_{pid:X4}", StringComparison.OrdinalIgnoreCase) >= 0)
-                {
-                    paths.Add(path);
-                    pids[path] = pid;
-                    break;
-                }
-            }
+            var pid = ParseProductIdFromInstancePath(path);
+            if (accept.Count > 0 && !accept.Contains(pid)) continue;
+            paths.Add(path);
+            pids[path] = pid;
         }
-
-        // Fallback: WinUSB-GUID often misses Zadig-installed instances; the raw
-        // USB class still sees the device by VID.
-        if (paths.Count == 0)
-        {
-            var usbClassGuid = new Guid("{a5dcbf10-6530-11d2-901f-00c04fb951fa}");
-            var usbInfo = NativeMethods.SetupDiGetClassDevs(
-                IntPtr.Zero, "USB", IntPtr.Zero,
-                NativeMethods.DIGCF_PRESENT | NativeMethods.DIGCF_DEVICEINTERFACE);
-            var usbIface = new NativeMethods.SP_DEVICE_INTERFACE_DATA { cbSize = Marshal.SizeOf<NativeMethods.SP_DEVICE_INTERFACE_DATA>() };
-            int j = 0;
-            while (NativeMethods.SetupDiEnumDeviceInterfaces(
-                       usbInfo, IntPtr.Zero, ref usbClassGuid, j++, ref usbIface))
-            {
-                var detailProbe = default(NativeMethods.SP_DEVICE_INTERFACE_DETAIL_DATA);
-                NativeMethods.SetupDiGetDeviceInterfaceDetail(
-                    usbInfo, ref usbIface, ref detailProbe, 0, out var required, IntPtr.Zero);
-                var detail = new NativeMethods.SP_DEVICE_INTERFACE_DETAIL_DATA { cbSize = Marshal.SizeOf<NativeMethods.SP_DEVICE_INTERFACE_DETAIL_DATA>() };
-                if (!NativeMethods.SetupDiGetDeviceInterfaceDetail(usbInfo, ref usbIface, ref detail, required, out _, IntPtr.Zero))
-                    continue;
-                var path = detail.DevicePath ?? "";
-                if (path.IndexOf($"VID_{vid:X4}", StringComparison.OrdinalIgnoreCase) < 0) continue;
-                var pid = ParseProductIdFromInstancePath(path);
-                paths.Add(path);
-                pids[path] = pid;
-            }
-            NativeMethods.SetupDiDestroyDeviceInfoList(usbInfo);
-        }
-
         NativeMethods.SetupDiDestroyDeviceInfoList(devInfo);
-        return (paths, pids);
     }
+
+    private static string TryReadFriendlyName(IntPtr devInfo, ref NativeMethods.SP_DEVICE_INTERFACE_DATA iface, string fallback)
+    {
+        // SPDRP_FRIENDLYNAME = 0x0000000C
+        var neededSize = 0;
+        NativeMethods.SetupDiGetDeviceRegistryProperty(
+            devInfo, ref iface, NativeMethods.SPDRP_FRIENDLYNAME,
+            out _, null, 0, out neededSize);
+        if (neededSize == 0) return fallback;
+
+        var buf = new byte[neededSize];
+        if (!NativeMethods.SetupDiGetDeviceRegistryProperty(
+                devInfo, ref iface, NativeMethods.SPDRP_FRIENDLYNAME,
+                out _, buf, (uint)buf.Length, out _))
+            return fallback;
+
+        return System.Text.Encoding.Unicode.GetString(buf, 0, buf.Length).TrimEnd('\0');
+    }
+
+    public sealed record UsbDeviceInfo(string Path, ushort Vid, ushort Pid, string Name);
+
+    // GUIDs:
+    //   WinUSB class               — only sees WinUSB-class devices
+    //   USB device-interface class — sees every USB device on the bus
+    //   HID class                  — sees keyboards/mice/etc, useful diagnostics
+    private static readonly Guid WinUsbClassGuid      = new("dee8247e-ee62-434a-bf9a-88affaf91b04");
+    private static readonly Guid UsbDeviceClassGuid   = new("a5dcbf10-6530-11d2-901f-00c04fb951fa");
+    private static readonly Guid HidClassGuid         = new("4d1e55b2-f16f-11cf-88cb-001111000030");
 }
 
 internal static class NativeMethods
@@ -444,6 +526,23 @@ internal static class NativeMethods
         uint DeviceInterfaceDetailDataSize,
         out uint RequiredSize,
         IntPtr DeviceInfoData);
+
+    /// <summary>
+    /// P/Invoke for SetupDiGetDeviceRegistryProperty. The byte[] PropertyBuffer
+    /// has to be marshalled by hand because its length is only known after the
+    /// first call (returns RequiredSize).
+    /// </summary>
+    [DllImport(SetupApiDll, EntryPoint = "SetupDiGetDeviceRegistryPropertyW", CharSet = CharSet.Unicode, SetLastError = true)]
+    public static extern bool SetupDiGetDeviceRegistryProperty(
+        IntPtr DeviceInfoSet,
+        ref SP_DEVICE_INTERFACE_DATA DeviceInterfaceData,
+        uint Property,
+        out uint PropertyRegDataType,
+        byte[]? PropertyBuffer,
+        uint PropertyBufferSize,
+        out uint RequiredSize);
+
+    public const uint SPDRP_FRIENDLYNAME = 0x0000000C;
 
     [DllImport(SetupApiDll, SetLastError = true)]
     public static extern bool SetupDiDestroyDeviceInfoList(IntPtr DeviceInfoSet);

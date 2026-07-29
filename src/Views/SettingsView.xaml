@@ -56,13 +56,23 @@
                     </DockPanel>
                     <ListBox ItemsSource="{Binding UsbDevices}"
                              SelectedItem="{Binding SelectedUsbDevice}"
-                             Height="100" Margin="0,8,0,0" Padding="6">
+                             Height="180" Margin="0,8,0,0" Padding="6">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
-                                <TextBlock Text="{Binding Description}"/>
+                                <StackPanel>
+                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
+                                    <TextBlock FontSize="11" Foreground="#6B7280">
+                                        <Run Text="VID 0x"/>
+                                        <Run Text="{Binding Vid, StringFormat={}{0:X4}}"/>
+                                        <Run Text="  PID 0x"/>
+                                        <Run Text="{Binding Pid, StringFormat={}{0:X4}}"/>
+                                    </TextBlock>
+                                </StackPanel>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
+                    <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#6B7280" Margin="0,4,0,0"
+                               Text="If your printer isn't listed, run Zadig (Options → List All Devices → pick the printer → target WinUSB → Replace Driver) and click Scan again."/>
 
                     <Border Background="#F3F4F6" Padding="12" Margin="0,16,0,0" CornerRadius="6">
                         <StackPanel>

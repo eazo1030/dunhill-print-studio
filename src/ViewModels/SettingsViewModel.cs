@@ -6,8 +6,6 @@ using Dunhill.PrintStudio.Usb;
 
 namespace Dunhill.PrintStudio.ViewModels;
 
-public sealed record UsbDeviceInfo(string Path, ushort Vid, ushort Pid, string Description);
-
 public partial class SettingsViewModel : ObservableObject
 {
     private readonly PrintService _print;
@@ -23,9 +21,9 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string? printerModel;
     [ObservableProperty] private string? connectionDetail;
 
-    /// <summary>Detected Postek ZR300I USB devices (VID 0x0FE6).</summary>
-    public ObservableCollection<UsbDeviceInfo> UsbDevices { get; } = new();
-    [ObservableProperty] private UsbDeviceInfo? selectedUsbDevice;
+    /// <summary>Every USB device visible to Win32 on this machine.</summary>
+    public ObservableCollection<PostekUsbTransport.UsbDeviceInfo> UsbDevices { get; } = new();
+    [ObservableProperty] private PostekUsbTransport.UsbDeviceInfo? selectedUsbDevice;
     [ObservableProperty] private bool isScanningUsb;
 
     public SettingsViewModel(PrintService print, PostekUsbTransport usb)
@@ -44,21 +42,21 @@ public partial class SettingsViewModel : ObservableObject
         try
         {
             UsbDevices.Clear();
-            var (paths, pidsByPath) = PostekUsbTransport.EnumeratePostekDevices(0x0FE6, _acceptPids);
-            foreach (var p in paths)
-            {
-                var pid = pidsByPath.TryGetValue(p, out var v) ? v : (ushort)0;
-                UsbDevices.Add(new UsbDeviceInfo(p, 0x0FE6, pid, $"Postek ZR300I (PID 0x{pid:X4})"));
-            }
+            var all = PostekUsbTransport.EnumerateAllUsbDevices();
+            foreach (var d in all)
+                UsbDevices.Add(d);
+
             if (UsbDevices.Count == 0)
             {
-                LastError = _usb.LastError
-                    ?? "No Postek ZR300I (VID 0x0FE6) found with WinUSB driver. Run Zadig, then click Scan again.";
+                LastError = "No USB devices found. Plug the printer into a free USB port, then click Scan again.";
             }
             else
             {
                 LastError = null;
-                SelectedUsbDevice ??= UsbDevices[0];
+                // Pre-select a likely Postek; if there isn't one the operator picks manually.
+                var firstPostek = UsbDevices.FirstOrDefault(d =>
+                    d.Vid == PostekUsbTransport.PostekVendorId);
+                SelectedUsbDevice = firstPostek ?? UsbDevices[0];
             }
         }
         finally
@@ -66,8 +64,6 @@ public partial class SettingsViewModel : ObservableObject
             IsScanningUsb = false;
         }
     }
-
-    private static readonly ushort[] _acceptPids = { 0x2012, 0x2024, 0x8150 };
 
     [RelayCommand]
     private void ConnectUsb()
