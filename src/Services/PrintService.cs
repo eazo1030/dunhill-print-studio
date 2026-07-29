@@ -63,7 +63,22 @@ public sealed class PrintService : IDisposable
         {
             Disconnect();
             _usb = new PostekUsbTransport();
-            if (!_usb.Open(acceptProductIds))
+            return UsbOpenAndSubscribe(_usb, acceptProductIds);
+        }
+    }
+
+    /// <summary>
+    /// Open a specific device path returned by
+    /// <see cref="PostekUsbTransport.EnumeratePostekDevices"/>. Same contract
+    /// as <see cref="ConnectUsb(ushort[])"/> but skips the re-enumeration step.
+    /// </summary>
+    public bool ConnectUsbPath(string devicePath)
+    {
+        lock (_lock)
+        {
+            Disconnect();
+            _usb = new PostekUsbTransport();
+            if (!_usb.OpenDevice(devicePath))
             {
                 LastError = _usb.LastError;
                 Status = Status with { Online = false, LastError = LastError };
@@ -72,17 +87,37 @@ public sealed class PrintService : IDisposable
                 RaiseStatus();
                 return false;
             }
-            var pid = _usb.DetectedProductId != 0 ? $" PID 0x{_usb.DetectedProductId:X4}" : "";
-            _currentEndpoint = $"USB{pid}";
-            Status = new PrinterStatus(
-                Online: true,
-                Model: "ZR300I (USB)",
-                ConnectionType: _currentEndpoint,
-                LastError: null,
-                LastChecked: DateTime.UtcNow);
-            RaiseStatus();
+            FinalizeUsbConnect();
             return true;
         }
+    }
+
+    private bool UsbOpenAndSubscribe(PostekUsbTransport usb, ushort[]? pids)
+    {
+        if (!usb.Open(pids))
+        {
+            LastError = usb.LastError;
+            Status = Status with { Online = false, LastError = LastError };
+            usb.Dispose();
+            _usb = null;
+            RaiseStatus();
+            return false;
+        }
+        FinalizeUsbConnect();
+        return true;
+    }
+
+    private void FinalizeUsbConnect()
+    {
+        var pid = _usb!.DetectedProductId != 0 ? $" PID 0x{_usb.DetectedProductId:X4}" : "";
+        var endpoint = $"USB{pid}";
+        Status = new PrinterStatus(
+            Online: true,
+            Model: "ZR300I (USB)",
+            ConnectionType: endpoint,
+            LastError: null,
+            LastChecked: DateTime.UtcNow);
+        RaiseStatus();
     }
 
     public void Disconnect()

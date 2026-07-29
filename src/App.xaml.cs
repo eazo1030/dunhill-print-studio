@@ -2,6 +2,7 @@ using System.IO;
 using System.Windows;
 using Dunhill.PrintStudio.Services;
 using Dunhill.PrintStudio.Sync;
+using Dunhill.PrintStudio.Usb;
 using Dunhill.PrintStudio.ViewModels;
 using Dunhill.PrintStudio.Views;
 using Microsoft.Extensions.DependencyInjection;
@@ -33,6 +34,8 @@ public partial class App : Application
                 {
                     Log("ConfigureServices: PrintService");
                     services.AddSingleton<PrintService>();
+                    Log("ConfigureServices: USB transport");
+                    services.AddSingleton<PostekUsbTransport>();
 
                     Log("ConfigureServices: ViewModels");
                     services.AddTransient<PrintViewModel>();

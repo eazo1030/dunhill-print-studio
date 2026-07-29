@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using Microsoft.Win32.SafeHandles;
@@ -58,6 +59,33 @@ public sealed class PostekUsbTransport : IDisposable
                     "pick the ZR300I -> target WinUSB -> Replace Driver, then try again.";
                 return false;
             }
+            return OpenInternal(devicePath);
+        }
+        catch (Exception ex)
+        {
+            LastError = $"USB open failed: {ex.Message}";
+            Close();
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Open a specific previously-enumerated device path. Use this when the
+    /// caller has a device list (from <see cref="EnumeratePostekDevices"/>)
+    /// and skips the re-enumeration that <see cref="Open"/> would perform.
+    /// </summary>
+    public bool OpenDevice(string devicePath)
+    {
+        LastError = null;
+        Close();
+        try { return OpenInternal(devicePath); }
+        catch (Exception ex) { LastError = $"USB open failed: {ex.Message}"; Close(); return false; }
+    }
+
+    private bool OpenInternal(string devicePath)
+    {
+        try
+        {
             DevicePath = devicePath;
             DetectedProductId = ParseProductIdFromInstancePath(devicePath);
 
@@ -216,15 +244,26 @@ public sealed class PostekUsbTransport : IDisposable
 
     private static string? FindPostekDevicePath(ushort vid, ushort[] acceptPids)
     {
-        // GUID_DEVINTERFACE_WINUSB
+        var (paths, _) = EnumeratePostekDevices(vid, acceptPids);
+        return paths.FirstOrDefault();
+    }
+
+    /// <summary>
+    /// Return every USB device path matching the given VID / accepted PIDs, plus
+    /// a parallel dictionary keyed by path with the parsed PID. Used by
+    /// SettingsViewModel to populate the "Available USB devices" list.
+    /// </summary>
+    public static (IReadOnlyList<string> Paths, IReadOnlyDictionary<string, ushort> PidsByPath)
+        EnumeratePostekDevices(ushort vid, ushort[] acceptPids)
+    {
+        var paths = new List<string>();
+        var pids  = new Dictionary<string, ushort>();
         var classGuid = new Guid("{dee8247e-ee62-434a-bf9a-88affaf91b04}");
 
         var devInfo = NativeMethods.SetupDiGetClassDevs(
-            IntPtr.Zero,
-            "USB",
-            IntPtr.Zero,
+            IntPtr.Zero, "USB", IntPtr.Zero,
             NativeMethods.DIGCF_PRESENT | NativeMethods.DIGCF_DEVICEINTERFACE);
-        if (devInfo.ToInt64() == -1) return null;
+        if (devInfo.ToInt64() == -1) return (paths, pids);
 
         var iface = new NativeMethods.SP_DEVICE_INTERFACE_DATA
         {
@@ -232,17 +271,12 @@ public sealed class PostekUsbTransport : IDisposable
         };
 
         int idx = 0;
-        string? match = null;
         while (NativeMethods.SetupDiEnumDeviceInterfaces(
                    devInfo, IntPtr.Zero, ref classGuid, idx++, ref iface))
         {
-            // First call: get required buffer size; pass an uninitialized detail struct.
-            // Marshalling handles plain structs here — we don't need SkipInit because
-            // the API only reads cbSize and writes required.
             var detailProbe = default(NativeMethods.SP_DEVICE_INTERFACE_DETAIL_DATA);
             NativeMethods.SetupDiGetDeviceInterfaceDetail(
                 devInfo, ref iface, ref detailProbe, 0, out var required, IntPtr.Zero);
-
             var detail = new NativeMethods.SP_DEVICE_INTERFACE_DETAIL_DATA
             {
                 cbSize = Marshal.SizeOf<NativeMethods.SP_DEVICE_INTERFACE_DETAIL_DATA>()
@@ -250,24 +284,22 @@ public sealed class PostekUsbTransport : IDisposable
             if (!NativeMethods.SetupDiGetDeviceInterfaceDetail(
                     devInfo, ref iface, ref detail, required, out _, IntPtr.Zero))
                 continue;
-
             var path = detail.DevicePath ?? "";
             if (path.IndexOf($"VID_{vid:X4}", StringComparison.OrdinalIgnoreCase) < 0) continue;
-
             foreach (var pid in acceptPids)
             {
                 if (path.IndexOf($"PID_{pid:X4}", StringComparison.OrdinalIgnoreCase) >= 0)
                 {
-                    match = path;
+                    paths.Add(path);
+                    pids[path] = pid;
                     break;
                 }
             }
-            if (match != null) break;
         }
 
-        // Fallback: scan the raw USB class. WinUSB-GUID sometimes misses
-        // Zadig-installed instances; the raw class always sees USB devices.
-        if (match == null)
+        // Fallback: WinUSB-GUID often misses Zadig-installed instances; the raw
+        // USB class still sees the device by VID.
+        if (paths.Count == 0)
         {
             var usbClassGuid = new Guid("{a5dcbf10-6530-11d2-901f-00c04fb951fa}");
             var usbInfo = NativeMethods.SetupDiGetClassDevs(
@@ -285,17 +317,16 @@ public sealed class PostekUsbTransport : IDisposable
                 if (!NativeMethods.SetupDiGetDeviceInterfaceDetail(usbInfo, ref usbIface, ref detail, required, out _, IntPtr.Zero))
                     continue;
                 var path = detail.DevicePath ?? "";
-                if (path.IndexOf($"VID_{vid:X4}", StringComparison.OrdinalIgnoreCase) >= 0)
-                {
-                    match = path;
-                    break;
-                }
+                if (path.IndexOf($"VID_{vid:X4}", StringComparison.OrdinalIgnoreCase) < 0) continue;
+                var pid = ParseProductIdFromInstancePath(path);
+                paths.Add(path);
+                pids[path] = pid;
             }
             NativeMethods.SetupDiDestroyDeviceInfoList(usbInfo);
         }
 
         NativeMethods.SetupDiDestroyDeviceInfoList(devInfo);
-        return match;
+        return (paths, pids);
     }
 }
 

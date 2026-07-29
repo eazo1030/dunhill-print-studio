@@ -47,9 +47,28 @@
                                 Command="{Binding PrintTestLabelCommand}"/>
                     </StackPanel>
 
+                    <TextBlock Text="USB printer (WinUSB driver)" Style="{StaticResource FieldLabel}" Margin="0,24,0,4"/>
+                    <DockPanel LastChildFill="False">
+                        <Button DockPanel.Dock="Left" Content="Scan" Padding="12,6"
+                                Command="{Binding ScanUsbCommand}"/>
+                        <Button DockPanel.Dock="Right" Content="Connect USB" Padding="12,6" Margin="8,0,0,0"
+                                Command="{Binding ConnectUsbCommand}"/>
+                    </DockPanel>
+                    <ListBox ItemsSource="{Binding UsbDevices}"
+                             SelectedItem="{Binding SelectedUsbDevice}"
+                             Height="100" Margin="0,8,0,0" Padding="6">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding Description}"/>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+
                     <Border Background="#F3F4F6" Padding="12" Margin="0,16,0,0" CornerRadius="6">
                         <StackPanel>
                             <TextBlock Text="{Binding Status}" FontWeight="SemiBold"/>
+                            <TextBlock Text="{Binding ConnectionDetail}" Foreground="#6B7280" FontSize="12"
+                                       Visibility="{Binding ConnectionDetail, Converter={StaticResource StringToVisibility}}"/>
                             <TextBlock Text="{Binding LastError}" Foreground="#DC2626"
                                        TextWrapping="Wrap" Margin="0,4,0,0"
                                        Visibility="{Binding LastError, Converter={StaticResource StringToVisibility}}"/>
