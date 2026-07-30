@@ -44,6 +44,8 @@ public partial class DesignerViewModel : ObservableObject
     public DesignerViewModel(TemplateStore store)
     {
         _store = store;
+        DesignerViewModelBridge.PushSnapshot    = PushSnapshot;
+        DesignerViewModelBridge.OnDragCompleted = OnDragCompleted;
         // Seed with a built-in starter template so a fresh install has something
         // to print without first designing one. Loaded from Templates/seed.json
         // if present, otherwise synthesized.
@@ -94,10 +96,18 @@ public partial class DesignerViewModel : ObservableObject
         if (value != null)
             foreach (var el in value.Elements) Elements.Add(Clone(el));
         OnPropertyChanged(nameof(SelectedElement));
+        _undo.Clear();
+        _redo.Clear();
         UpdatePreview();
+        UndoCommand.NotifyCanExecuteChanged();
+        RedoCommand.NotifyCanExecuteChanged();
     }
 
-    partial void OnSelectedElementChanged(LabelElement? value) => UpdatePreview();
+    partial void OnSelectedElementChanged(LabelElement? value)
+    {
+        DesignerViewModelBridge.SelectedElement = value;
+        UpdatePreview();
+    }
 
     partial void OnSampleSkuChanged(string value) => UpdatePreview();
     partial void OnSampleNameChanged(string value) => UpdatePreview();
@@ -156,18 +166,71 @@ public partial class DesignerViewModel : ObservableObject
         }
     }
 
+    // ---- Undo / redo (capped at 50 snapshots each) ----
+    private readonly Stack<DesignerSnapshot> _undo = new();
+    private readonly Stack<DesignerSnapshot> _redo = new();
+    private const int UndoCap = 50;
+    private bool _suspendSnapshot;        // true while applying a snapshot back
+
+    private record DesignerSnapshot(List<LabelElement> Elements);
+
+    /// <summary>Push a snapshot of the current element list onto the undo stack.</summary>
+    public void PushSnapshot()
+    {
+        if (_suspendSnapshot) return;
+        _undo.Push(new DesignerSnapshot(Elements.Select(Clone).ToList()));
+        if (_undo.Count > UndoCap) _undo.Skip(_undo.Count - UndoCap);   // drop oldest
+        _redo.Clear();  // any new edit invalidates redo
+    }
+
+    [RelayCommand(CanExecute = nameof(CanUndo))]
+    private void Undo()
+    {
+        if (_undo.Count == 0 || SelectedTemplate == null) return;
+        // Save current state to redo before swapping
+        _redo.Push(new DesignerSnapshot(Elements.Select(Clone).ToList()));
+        var snap = _undo.Pop();
+        ApplySnapshot(snap);
+        Status = $"Undo ({_undo.Count} more available).";
+    }
+    private bool CanUndo() => _undo.Count > 0;
+
+    [RelayCommand(CanExecute = nameof(CanRedo))]
+    private void Redo()
+    {
+        if (_redo.Count == 0 || SelectedTemplate == null) return;
+        _undo.Push(new DesignerSnapshot(Elements.Select(Clone).ToList()));
+        var snap = _redo.Pop();
+        ApplySnapshot(snap);
+        Status = $"Redo ({_redo.Count} more available).";
+    }
+    private bool CanRedo() => _redo.Count > 0;
+
+    private void ApplySnapshot(DesignerSnapshot snap)
+    {
+        _suspendSnapshot = true;
+        Elements.Clear();
+        foreach (var el in snap.Elements) Elements.Add(el);
+        _suspendSnapshot = false;
+        UpdatePreview();
+        OnPropertyChanged(nameof(CanUndo));
+        OnPropertyChanged(nameof(CanRedo));
+        UndoCommand.NotifyCanExecuteChanged();
+        RedoCommand.NotifyCanExecuteChanged();
+    }
+
     [RelayCommand]
-    private void AddText()    => AddElement(new LabelElement { Type = "text",    X = 20, Y = 20, Content = "New text",  FontHeight = 40, FontWidth = 40 });
+    private void AddText()    => WithSnapshot(() => AddElement(new LabelElement { Type = "text",    X = 20, Y = 20, Content = "New text",  FontHeight = 40, FontWidth = 40 }));
     [RelayCommand]
-    private void AddBarcode() => AddElement(new LabelElement { Type = "barcode", X = 20, Y = 20, Field = "Sku", BarcodeType = "Code128", BarcodeHeight = 80 });
+    private void AddBarcode() => WithSnapshot(() => AddElement(new LabelElement { Type = "barcode", X = 20, Y = 20, Field = "Sku", BarcodeType = "Code128", BarcodeHeight = 80 }));
     [RelayCommand]
-    private void AddQrCode()  => AddElement(new LabelElement { Type = "qrcode",  X = 20, Y = 20, Field = "QrPayload", QrMagnification = 5 });
+    private void AddQrCode()  => WithSnapshot(() => AddElement(new LabelElement { Type = "qrcode",  X = 20, Y = 20, Field = "QrPayload", QrMagnification = 5 }));
     [RelayCommand]
-    private void AddRfid()    => AddElement(new LabelElement { Type = "rfid",    X = 0,  Y = 0,  RfidBank = "EPC", RfidWords = 12 });
+    private void AddRfid()    => WithSnapshot(() => AddElement(new LabelElement { Type = "rfid",    X = 0,  Y = 0,  RfidBank = "EPC", RfidWords = 12 }));
     [RelayCommand]
-    private void AddLine()    => AddElement(new LabelElement { Type = "line",    X = 20, Y = 20, Width = 200, Thickness = 2 });
+    private void AddLine()    => WithSnapshot(() => AddElement(new LabelElement { Type = "line",    X = 20, Y = 20, Width = 200, Thickness = 2 }));
     [RelayCommand]
-    private void AddBox()     => AddElement(new LabelElement { Type = "box",     X = 20, Y = 20, Width = 200, Height = 100, Thickness = 2 });
+    private void AddBox()     => WithSnapshot(() => AddElement(new LabelElement { Type = "box",     X = 20, Y = 20, Width = 200, Height = 100, Thickness = 2 }));
 
     private void AddElement(LabelElement el)
     {
@@ -179,6 +242,7 @@ public partial class DesignerViewModel : ObservableObject
     private void RemoveSelected()
     {
         if (SelectedElement == null) return;
+        PushSnapshot();
         Elements.Remove(SelectedElement);
         SelectedElement = null;
     }
@@ -187,6 +251,7 @@ public partial class DesignerViewModel : ObservableObject
     private void MoveUp()
     {
         if (SelectedElement == null) return;
+        PushSnapshot();
         var i = Elements.IndexOf(SelectedElement);
         if (i > 0) Elements.Move(i, i - 1);
     }
@@ -195,9 +260,31 @@ public partial class DesignerViewModel : ObservableObject
     private void MoveDown()
     {
         if (SelectedElement == null) return;
+        PushSnapshot();
         var i = Elements.IndexOf(SelectedElement);
         if (i >= 0 && i < Elements.Count - 1) Elements.Move(i, i + 1);
     }
+
+    [RelayCommand]
+    private void DeleteKey()
+    {
+        if (SelectedElement != null) RemoveSelected();
+    }
+
+    /// <summary>Wrap a single edit operation: snapshot first, then execute.</summary>
+    private void WithSnapshot(Action op)
+    {
+        PushSnapshot();
+        op();
+    }
+
+    /// <summary>
+    /// Called by DesignerCanvasBehavior on DragCompleted. Pushes ONE snapshot
+    /// for the entire drag (the snapshot was already taken on drag-start, so
+    /// this is mostly a no-op — but it lets the VM notify the command state
+    /// so Undo becomes available if it wasn't).
+    /// </summary>
+    public void OnDragCompleted() { UndoCommand.NotifyCanExecuteChanged(); }
 
     private void UpdatePreview()
     {

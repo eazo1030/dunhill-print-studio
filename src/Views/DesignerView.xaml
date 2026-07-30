@@ -3,10 +3,22 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:Dunhill.PrintStudio.ViewModels"
              xmlns:models="clr-namespace:Dunhill.PrintStudio.Models"
+             xmlns:views="clr-namespace:Dunhill.PrintStudio.Views"
              d:DataContext="{d:DesignInstance Type=vm:DesignerViewModel}"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" Background="White">
+
+    <!--
+      Keyboard shortcuts for the whole Designer tab: Ctrl+Z / Ctrl+Y undo/redo,
+      Delete removes the selected element. RoutedCommand bindings inside
+      the UserControl.InputBindings so they only fire when this tab is focused.
+    -->
+    <UserControl.InputBindings>
+        <KeyBinding Key="Z" Modifiers="Ctrl" Command="{Binding UndoCommand}"/>
+        <KeyBinding Key="Y" Modifiers="Ctrl" Command="{Binding RedoCommand}"/>
+        <KeyBinding Key="Delete" Command="{Binding DeleteKeyCommand}"/>
+    </UserControl.InputBindings>
 
     <Grid Margin="16">
         <Grid.ColumnDefinitions>
@@ -43,6 +55,12 @@
                             Command="{Binding SaveCommand}"/>
                     <Button Content="Delete" Padding="10,5" Margin="6,0,0,0"
                             Command="{Binding DeleteCommand}"/>
+                    <Button Content="↶ Undo" Padding="10,5" Margin="6,0,0,0"
+                            Command="{Binding UndoCommand}"
+                            ToolTip="Ctrl+Z — revert the last edit"/>
+                    <Button Content="↷ Redo" Padding="10,5" Margin="6,0,0,0"
+                            Command="{Binding RedoCommand}"
+                            ToolTip="Ctrl+Y — re-apply an undone edit"/>
                 </StackPanel>
 
                 <TextBlock Grid.Row="3" Text="Add element" Style="{StaticResource PanelHeader}" Margin="0,18,0,8"/>
@@ -91,9 +109,22 @@
                 <Border Grid.Row="1" Background="White" BorderBrush="#D1D5DB" BorderThickness="1"
                         Padding="12" CornerRadius="4" ClipToBounds="True">
                     <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
-                        <Grid Width="{Binding SelectedTemplate.WidthDots, FallbackValue=583}"
+                        <!--
+                          Outer Grid hosts mouse-drag handlers (via DesignerCanvasBehavior)
+                          and renders the 6 stacked ItemsControls (one per element type).
+                          The guides Canvas sits on top, transparent, just for the snap
+                          guide lines drawn by the behavior helper.
+                        -->
+                        <Grid x:Name="LabelCanvas"
+                              Width="{Binding SelectedTemplate.WidthDots, FallbackValue=583}"
                               Height="{Binding SelectedTemplate.HeightDots, FallbackValue=160}"
-                              Background="White">
+                              Background="White"
+                              views:DesignerCanvasBehavior.IsEnabled="True">
+                            <Canvas x:Name="GuideCanvas"
+                                    Width="{Binding ActualWidth, ElementName=LabelCanvas}"
+                                    Height="{Binding ActualHeight, ElementName=LabelCanvas}"
+                                    IsHitTestVisible="False"
+                                    Background="Transparent"/>
                             <ItemsControl ItemsSource="{Binding Elements}">
                                 <ItemsControl.ItemsPanel>
                                     <ItemsPanelTemplate>
