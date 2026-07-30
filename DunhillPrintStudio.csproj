@@ -43,7 +43,12 @@
     <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="8.0.0" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
     <PackageReference Include="Velopack" Version="1.2.0" />
-    <PackageReference Include="Velopack.Sources" Version="1.2.0" />
+    <!--
+      Note: Velopack.Sources is NOT a real NuGet package. GithubSource,
+      SimpleWebSource, etc. live inside the main Velopack.dll under the
+      Velopack.Sources namespace. Adding a <PackageReference> for it causes
+      NU1101: Unable to find package Velopack.Sources at restore time.
+    -->
   </ItemGroup>
 
   <ItemGroup>
