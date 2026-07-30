@@ -11,6 +11,16 @@
     <AssemblyName>DunhillPrintStudio</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
 
+    <!--
+      Disable the auto-generated WPF Main. We provide our own Program.Main that
+      runs VelopackApp.Build().Run() FIRST (before any WPF startup) so install /
+      uninstall / update hooks can short-circuit the process with the right exit
+      code. This is the documented Velopack integration pattern; without it,
+      hooks fire AFTER WPF starts and cause mysterious double-launch bugs.
+    -->
+    <EnableDefaultApplicationDefinition>false</EnableDefaultApplicationDefinition>
+    <StartupObject>Dunhill.PrintStudio.Program</StartupObject>
+
     <!-- Single-file publish settings -->
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
@@ -32,6 +42,8 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.0" />
     <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="8.0.0" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
+    <PackageReference Include="Velopack" Version="1.2.0" />
+    <PackageReference Include="Velopack.Sources" Version="1.2.0" />
   </ItemGroup>
 
   <ItemGroup>
@@ -40,11 +52,59 @@
     </None>
   </ItemGroup>
 
+  <!--
+    App icon — embedded as a WPF Resource so both App.xaml and MainWindow.xaml
+    can reference it via {pack://...} URIs. app-icon-1024.png is the source
+    artwork; app.ico is the multi-resolution Windows icon for Velopack's
+    --icon flag (used by the Setup.exe installer). Both ship together.
+  -->
+  <ItemGroup>
+    <Resource Include="assets\app-icon-1024.png" />
+  </ItemGroup>
+
   <ItemGroup>
     <ApplicationDefinition Include="src\App.xaml">
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </ApplicationDefinition>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="src\Program.cs" />
+  </ItemGroup>
+
+  <!--
+    EnableDefaultApplicationDefinition=false disables WPF's automatic XAML
+    inclusion, so every .xaml file (besides App.xaml, listed above as the
+    <ApplicationDefinition>) must be listed explicitly as a <Page>. Without
+    these, the XAML files compile to nothing, every InitializeComponent()
+    call resolves to a missing member, and we get CS0101/CS0117 build errors.
+  -->
+  <ItemGroup>
+    <Page Include="src\MainWindow.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="src\Views\PrintView.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="src\Views\SettingsView.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="src\Views\QueueView.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="src\Views\HistoryView.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="src\Views\InventoryView.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
   </ItemGroup>
 
 </Project>

@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:views="clr-namespace:Dunhill.PrintStudio.Views"
         Title="Dunhill Print Studio"
+        Icon="/assets/app-icon-1024.png"
         Height="720" Width="1180"
         MinHeight="540" MinWidth="920"
         WindowStartupLocation="CenterScreen"
@@ -22,11 +23,13 @@
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
-                <StackPanel Orientation="Horizontal" Grid.Column="0">
+                <StackPanel Orientation="Horizontal" Grid.Column="0" VerticalAlignment="Center">
+                    <Image Source="/assets/app-icon-1024.png" Width="24" Height="24"
+                           Margin="0,0,10,0" RenderOptions.BitmapScalingMode="HighQuality"/>
                     <Ellipse Width="10" Height="10" Margin="0,0,8,0"
                              x:Name="StatusDot" Fill="#EF4444"/>
                     <TextBlock Text="Dunhill Print Studio" Foreground="White"
-                               FontSize="16" FontWeight="SemiBold"/>
+                               FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"/>
                     <TextBlock x:Name="PrinterStatusText" Foreground="#D1D5DB"
                                FontSize="13" Margin="20,0,0,0" VerticalAlignment="Center"
                                Text="Disconnected"/>

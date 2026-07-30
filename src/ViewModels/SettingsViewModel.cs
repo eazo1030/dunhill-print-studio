@@ -4,12 +4,14 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Dunhill.PrintStudio.Services;
 using Dunhill.PrintStudio.Usb;
+using Velopack;
 
 namespace Dunhill.PrintStudio.ViewModels;
 
 public partial class SettingsViewModel : ObservableObject
 {
     private readonly PrintService _print;
+    private readonly UpdateService _update;
 
     [ObservableProperty] private string tcpHost = "";
     [ObservableProperty] private int tcpPort = 9100;
@@ -21,6 +23,16 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool isConnected;
     [ObservableProperty] private string? printerModel;
     [ObservableProperty] private string? connectionDetail;
+
+    // Update UI state — exposed so the Settings panel can show "Up to date"
+    // / "v1.0.1 available" / "Downloading 42%…" / "Restarting…" without the
+    // operator having to read startup.log.
+    [ObservableProperty] private string currentVersion = "0.0.0";
+    [ObservableProperty] private string? availableVersion;
+    [ObservableProperty] private bool updateAvailable;
+    [ObservableProperty] private bool isCheckingUpdate;
+    [ObservableProperty] private bool isDownloadingUpdate;
+    [ObservableProperty] private string? updateStatusMessage;
 
     /// <summary>Installed Postek print queues, refreshed by RefreshSpooler.</summary>
     public ObservableCollection<PostekSpoolerTransport.SpoolerPrinterInfo> SpoolerPrinters { get; } = new();
@@ -78,9 +90,11 @@ public partial class SettingsViewModel : ObservableObject
         }
     }
 
-    public SettingsViewModel(PrintService print)
+    public SettingsViewModel(PrintService print, UpdateService update)
     {
         _print = print;
+        _update = update;
+        CurrentVersion = _update.CurrentVersion;
         // Mirror the print service's status events into our own observable
         // properties. Without this hook the toolbar's "Connected: …" line and
         // the Mode label stay stale until the user changes another input.
@@ -201,6 +215,87 @@ public partial class SettingsViewModel : ObservableObject
         var ok = await _print.PrintTestLabelAsync(dims);
         Status = ok ? "Test label printed" : $"Test failed: {_print.LastError}";
     }
+
+    // ---------------------------------------------------------------------
+    // Update commands — driven from Settings → "Check for updates" button.
+    // Flow: Check → if newer version → Download → ApplyUpdatesAndExit
+    // (which exits the process; Velopack then relaunches the new version).
+    // ---------------------------------------------------------------------
+    private UpdateInfo? _pendingUpdate;
+
+    [RelayCommand(CanExecute = nameof(CanCheckForUpdate))]
+    private async Task CheckForUpdateAsync()
+    {
+        if (IsCheckingUpdate || IsDownloadingUpdate) return;
+        IsCheckingUpdate = true;
+        UpdateStatusMessage = "Checking for updates…";
+        LastError = null;
+        try
+        {
+            var info = await _update.CheckForUpdatesAsync();
+            if (info is null)
+            {
+                UpdateAvailable = false;
+                AvailableVersion = null;
+                UpdateStatusMessage = $"Up to date (v{CurrentVersion}).";
+            }
+            else
+            {
+                _pendingUpdate = info;
+                UpdateAvailable = true;
+                AvailableVersion = info.TargetFullRelease.Version?.ToString();
+                UpdateStatusMessage = $"v{AvailableVersion} is available.";
+            }
+        }
+        catch (NotInstalledException)
+        {
+            // Running from raw .exe (dev box, CI artifact, first install) — no
+            // Velopack install to update. Show a helpful hint, don't blow up.
+            UpdateStatusMessage =
+                "Self-update is only available when installed via Velopack. " +
+                "Run the published installer, not the raw .exe.";
+        }
+        catch (Exception ex)
+        {
+            LastError = "Update check failed: " + ex.Message;
+            UpdateStatusMessage = "Update check failed.";
+        }
+        finally
+        {
+            IsCheckingUpdate = false;
+            CheckForUpdateCommand.NotifyCanExecuteChanged();
+            DownloadAndRestartCommand.NotifyCanExecuteChanged();
+        }
+    }
+
+    private bool CanCheckForUpdate() => !IsCheckingUpdate && !IsDownloadingUpdate;
+
+    [RelayCommand(CanExecute = nameof(CanDownloadAndRestart))]
+    private async Task DownloadAndRestartAsync()
+    {
+        if (_pendingUpdate is null || IsDownloadingUpdate) return;
+        IsDownloadingUpdate = true;
+        UpdateStatusMessage = "Downloading update…";
+        LastError = null;
+        try
+        {
+            await _update.DownloadUpdatesAsync(_pendingUpdate);
+            UpdateStatusMessage = "Restarting to apply update…";
+            // ApplyUpdatesAndExit calls ExitProcess internally — control does
+            // not return. The new version launches once we exit.
+            _update.ApplyUpdatesAndExit(_pendingUpdate);
+        }
+        catch (Exception ex)
+        {
+            LastError = "Update download failed: " + ex.Message;
+            UpdateStatusMessage = "Update download failed.";
+            IsDownloadingUpdate = false;
+            DownloadAndRestartCommand.NotifyCanExecuteChanged();
+        }
+    }
+
+    private bool CanDownloadAndRestart() =>
+        UpdateAvailable && _pendingUpdate is not null && !IsDownloadingUpdate;
 
     private static void Log(string msg)
     {

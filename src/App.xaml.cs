@@ -65,6 +65,9 @@ public partial class App : Application
                     services.AddSingleton(new SyncConfig());
                     services.AddHostedService<CloudSyncService>();
 
+                    Log("ConfigureServices: UpdateService");
+                    services.AddSingleton<UpdateService>();
+
                     Log("ConfigureServices: MainWindow");
                     services.AddSingleton<MainWindow>();
                 })

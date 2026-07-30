@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write  # needed for softprops/action-gh-release to attach files
 
 jobs:
   build:
@@ -25,6 +25,16 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
+
+      - name: Install Velopack CLI (vpk)
+        # vpk packs the published binary into a Velopack nupkg + RELEASES file
+        # that the app's UpdateService consumes. Pin the same major version
+        # that the app references (1.2.x).
+        run: dotnet tool install -g vpk --version 1.2.*
+
+      # Note: on windows-latest, dotnet tool install -g drops vpk.exe at
+      # %USERPROFILE%\.dotnet\tools which is auto-added to PATH for the
+      # remainder of the workflow run.
 
       - name: Restore NuGet packages
         run: dotnet restore DunhillPrintStudio.csproj --verbosity normal 2>&1 | tee restore.log
@@ -56,6 +66,35 @@ jobs:
           $size = [math]::Round((Get-Item $exe).Length / 1MB, 1)
           Write-Host "Built DunhillPrintStudio.exe ($size MB)"
 
+      # -----------------------------------------------------------------
+      # Velopack pack — produces nupkg + RELEASES file for the in-app
+      # UpdateService to find. Skip on PRs from forks (no secrets access)
+      # so forks can build but not push a release.
+      # -----------------------------------------------------------------
+      - name: Velopack pack (stable channel)
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+        shell: pwsh
+        env:
+          VELOPACK_VERSION: ${{ github.ref_name }}
+        run: |
+          $pubDir = "bin\Release\net8.0-windows10.0.19041.0\win-x64\publish"
+          $packId = "DunhillPrintStudio"
+          $packTitle = "Dunhill Print Studio"
+          $packAuthors = "Dunhill Global"
+          # Strip the leading 'v' from tag (e.g. v1.0.1 -> 1.0.1)
+          $version = if ($env:VELOPACK_VERSION -like 'v*') { $env:VELOPACK_VERSION.Substring(1) } else { $env:VELOPACK_VERSION }
+          if (-not $version) { $version = "0.0.0-dev" }
+          Write-Host "Packing Velopack release: packId=$packId version=$version"
+          vpk pack `
+            --packId $packId `
+            --packVersion $version `
+            --packDir $pubDir `
+            --packTitle $packTitle `
+            --packAuthors $packAuthors `
+            --icon "${{ github.workspace }}\assets\app.ico" `
+            --outputDir "Releases"
+          Get-ChildItem -Recurse Releases | Select-Object FullName, Length
+
       - name: Upload exe artifact
         uses: actions/upload-artifact@v4
         with:
@@ -63,6 +102,15 @@ jobs:
           path: bin\Release\net8.0-windows10.0.19041.0\win-x64\publish\DunhillPrintStudio.exe
           if-no-files-found: error
           retention-days: 30
+
+      - name: Upload Velopack release artifacts
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: DunhillPrintStudio-velopack
+          path: Releases/**
+          if-no-files-found: warn
+          retention-days: 90
 
       - name: Upload build logs (always)
         if: always()
@@ -76,10 +124,15 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-      - name: Attach to release (on tag only)
+      - name: Attach Velopack files to GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: bin\Release\net8.0-windows10.0.19041.0\win-x64\publish\DunhillPrintStudio.exe
+          # Upload every file Velopack produced: RELEASES, *.nupkg, Setup.exe,
+          # DunhillPrintStudio.exe. The in-app UpdateService reads RELEASES
+          # and *.nupkg; Setup.exe is the installer for fresh installs.
+          files: |
+            Releases/**
+          fail_on_unmatched_files: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -110,7 +110,7 @@
                 </StackPanel>
             </Border>
 
-            <!-- RIGHT: Cloud settings -->
+            <!-- RIGHT: Cloud settings + Updates -->
             <Border Grid.Column="1" Padding="20" Margin="8,0,0,0" CornerRadius="8" Background="#FAFAFA">
                 <StackPanel>
                     <TextBlock Text="Cloud sync" Style="{StaticResource PanelHeader}" Margin="0"/>
@@ -125,7 +125,7 @@
                     <TextBlock TextWrapping="Wrap" Foreground="#6B7280" FontSize="12" Margin="0,16,0,0">
                         The auth token lets this PC pull print jobs from your website
                         and push completion events back. Get it from
-                        <Run FontWeight="SemiBold">Settings -> API tokens</Run>
+                        <Run FontWeight="SemiBold">Settings -&gt; API tokens</Run>
                         on dunhill-inventory-service.vercel.app.
                     </TextBlock>
 
@@ -134,11 +134,49 @@
                             <Run FontWeight="SemiBold">USB tip:</Run>
                             If no Postek printer appears in the list above, install
                             the printer via <Run FontWeight="SemiBold">Windows Settings
-                            -> Printers &amp; scanners -> Add device</Run>. Use the
+                            -&gt; Printers &amp; scanners -&gt; Add device</Run>. Use the
                             Seagull driver from BarTender UL for Postek (it shipped
                             with the printer CD) or download it from
                             <Run FontWeight="SemiBold">postekchina.com</Run>.
                         </TextBlock>
+                    </Border>
+
+                    <!--
+                      Updates — self-updater panel. Two visible states driven
+                      by UpdateAvailable:
+                        (a) idle/up-to-date: shows "Check for updates" button
+                        (b) update found: shows "Download &amp; restart" button
+                      Both show CurrentVersion + the latest UpdateStatusMessage.
+                    -->
+                    <Border Background="#EEF2FF" Padding="12" Margin="0,16,0,0" CornerRadius="6">
+                        <StackPanel>
+                            <TextBlock Text="Updates" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                            <TextBlock FontSize="12" Foreground="#6B7280" Margin="0,0,0,8">
+                                <Run Text="Current version: v"/>
+                                <Run Text="{Binding CurrentVersion, Mode=OneWay}"/>
+                            </TextBlock>
+                            <TextBlock Text="{Binding UpdateStatusMessage}" FontSize="12"
+                                       TextWrapping="Wrap" Margin="0,0,0,8"
+                                       Visibility="{Binding UpdateStatusMessage, Converter={StaticResource StringToVisibility}}"/>
+
+                            <!-- Idle state: no update found yet -->
+                            <Button Content="Check for updates" Padding="14,8"
+                                    Command="{Binding CheckForUpdateCommand}"
+                                    Visibility="{Binding UpdateAvailable, Converter={StaticResource Invert}, FallbackValue=Visible}"/>
+
+                            <!-- Update-found state -->
+                            <StackPanel Orientation="Horizontal"
+                                        Visibility="{Binding UpdateAvailable, FallbackValue=Collapsed}">
+                                <TextBlock VerticalAlignment="Center" FontSize="12" Margin="0,0,10,0">
+                                    <Run Text="v"/>
+                                    <Run Text="{Binding AvailableVersion, Mode=OneWay}"/>
+                                    <Run Text=" is available."/>
+                                </TextBlock>
+                                <Button Content="Download &amp; restart" Style="{StaticResource PrimaryButton}"
+                                        Padding="14,8"
+                                        Command="{Binding DownloadAndRestartCommand}"/>
+                            </StackPanel>
+                        </StackPanel>
                     </Border>
                 </StackPanel>
             </Border>
