@@ -58,6 +58,15 @@ public sealed class DotToFontSizeConverter : IValueConverter
         => throw new NotSupportedException();
 }
 
+/// <summary>True → Visible, false → Collapsed. WPF has no built-in bool→Visibility converter.</summary>
+public sealed class BoolToVisibilityConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => value is bool b ? (b ? Visibility.Visible : Visibility.Collapsed) : Visibility.Collapsed;
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => value is Visibility v && v == Visibility.Visible;
+}
+
 /// <summary>Barcode element rendered width: barcode height × 1.6 ratio (Code 128 typical aspect).</summary>
 public sealed class BarcodeWidthConverter : IValueConverter
 {

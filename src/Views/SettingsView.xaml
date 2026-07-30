@@ -163,11 +163,11 @@
                             <!-- Idle state: no update found yet -->
                             <Button Content="Check for updates" Padding="14,8"
                                     Command="{Binding CheckForUpdateCommand}"
-                                    Visibility="{Binding UpdateAvailable, Converter={StaticResource Invert}, FallbackValue=Visible}"/>
+                                    Visibility="{Binding UpdateAvailable, Converter={StaticResource BoolToVisibility}, FallbackValue=Visible}"/>
 
                             <!-- Update-found state -->
                             <StackPanel Orientation="Horizontal"
-                                        Visibility="{Binding UpdateAvailable, FallbackValue=Collapsed}">
+                                        Visibility="{Binding UpdateAvailable, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}">
                                 <TextBlock VerticalAlignment="Center" FontSize="12" Margin="0,0,10,0">
                                     <Run Text="v"/>
                                     <Run Text="{Binding AvailableVersion, Mode=OneWay}"/>
