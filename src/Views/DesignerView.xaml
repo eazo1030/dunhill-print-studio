@@ -119,8 +119,7 @@
                               Width="{Binding SelectedTemplate.WidthDots, FallbackValue=583}"
                               Height="{Binding SelectedTemplate.HeightDots, FallbackValue=160}"
                               Background="White"
-                              AllowDrop="False"
-                              views:DesignerCanvasBehavior.IsEnabled="True">
+                              AllowDrop="False">
                             <Canvas x:Name="GuideCanvas"
                                     Width="{Binding ActualWidth, ElementName=LabelCanvas}"
                                     Height="{Binding ActualHeight, ElementName=LabelCanvas}"
@@ -136,6 +135,13 @@
                                     <Style TargetType="ContentPresenter">
                                         <Setter Property="Canvas.Left" Value="{Binding X}"/>
                                         <Setter Property="Canvas.Top"  Value="{Binding Y}"/>
+                                        <Setter Property="AllowDrop" Value="False"/>
+                                        <EventSetter Event="MouseLeftButtonDown"
+                                                     Handler="OnElementMouseDown"/>
+                                        <EventSetter Event="MouseMove"
+                                                     Handler="OnElementMouseMove"/>
+                                        <EventSetter Event="MouseLeftButtonUp"
+                                                     Handler="OnElementMouseUp"/>
                                     </Style>
                                 </ItemsControl.ItemContainerStyle>
                                 <ItemsControl.Resources>
@@ -168,6 +174,13 @@
                                     <Style TargetType="ContentPresenter">
                                         <Setter Property="Canvas.Left" Value="{Binding X}"/>
                                         <Setter Property="Canvas.Top"  Value="{Binding Y}"/>
+                                        <Setter Property="AllowDrop" Value="False"/>
+                                        <EventSetter Event="MouseLeftButtonDown"
+                                                     Handler="OnElementMouseDown"/>
+                                        <EventSetter Event="MouseMove"
+                                                     Handler="OnElementMouseMove"/>
+                                        <EventSetter Event="MouseLeftButtonUp"
+                                                     Handler="OnElementMouseUp"/>
                                     </Style>
                                 </ItemsControl.ItemContainerStyle>
                                 <ItemsControl.Resources>
@@ -200,6 +213,13 @@
                                     <Style TargetType="ContentPresenter">
                                         <Setter Property="Canvas.Left" Value="{Binding X}"/>
                                         <Setter Property="Canvas.Top"  Value="{Binding Y}"/>
+                                        <Setter Property="AllowDrop" Value="False"/>
+                                        <EventSetter Event="MouseLeftButtonDown"
+                                                     Handler="OnElementMouseDown"/>
+                                        <EventSetter Event="MouseMove"
+                                                     Handler="OnElementMouseMove"/>
+                                        <EventSetter Event="MouseLeftButtonUp"
+                                                     Handler="OnElementMouseUp"/>
                                     </Style>
                                 </ItemsControl.ItemContainerStyle>
                                 <ItemsControl.Resources>
@@ -225,6 +245,13 @@
                                     <Style TargetType="ContentPresenter">
                                         <Setter Property="Canvas.Left" Value="{Binding X}"/>
                                         <Setter Property="Canvas.Top"  Value="{Binding Y}"/>
+                                        <Setter Property="AllowDrop" Value="False"/>
+                                        <EventSetter Event="MouseLeftButtonDown"
+                                                     Handler="OnElementMouseDown"/>
+                                        <EventSetter Event="MouseMove"
+                                                     Handler="OnElementMouseMove"/>
+                                        <EventSetter Event="MouseLeftButtonUp"
+                                                     Handler="OnElementMouseUp"/>
                                     </Style>
                                 </ItemsControl.ItemContainerStyle>
                                 <ItemsControl.Resources>
@@ -251,6 +278,13 @@
                                     <Style TargetType="ContentPresenter">
                                         <Setter Property="Canvas.Left" Value="{Binding X}"/>
                                         <Setter Property="Canvas.Top"  Value="{Binding Y}"/>
+                                        <Setter Property="AllowDrop" Value="False"/>
+                                        <EventSetter Event="MouseLeftButtonDown"
+                                                     Handler="OnElementMouseDown"/>
+                                        <EventSetter Event="MouseMove"
+                                                     Handler="OnElementMouseMove"/>
+                                        <EventSetter Event="MouseLeftButtonUp"
+                                                     Handler="OnElementMouseUp"/>
                                     </Style>
                                 </ItemsControl.ItemContainerStyle>
                                 <ItemsControl.Resources>
@@ -277,6 +311,13 @@
                                     <Style TargetType="ContentPresenter">
                                         <Setter Property="Canvas.Left" Value="{Binding X}"/>
                                         <Setter Property="Canvas.Top"  Value="{Binding Y}"/>
+                                        <Setter Property="AllowDrop" Value="False"/>
+                                        <EventSetter Event="MouseLeftButtonDown"
+                                                     Handler="OnElementMouseDown"/>
+                                        <EventSetter Event="MouseMove"
+                                                     Handler="OnElementMouseMove"/>
+                                        <EventSetter Event="MouseLeftButtonUp"
+                                                     Handler="OnElementMouseUp"/>
                                     </Style>
                                 </ItemsControl.ItemContainerStyle>
                                 <ItemsControl.Resources>

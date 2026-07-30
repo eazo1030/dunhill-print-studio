@@ -143,42 +143,70 @@
                     </Border>
 
                     <!--
-                      Updates — self-updater panel. Two visible states driven
-                      by UpdateAvailable:
-                        (a) idle/up-to-date: shows "Check for updates" button
-                        (b) update found: shows "Download &amp; restart" button
-                      Both show CurrentVersion + the latest UpdateStatusMessage.
-                    -->
-                    <Border Background="#EEF2FF" Padding="12" Margin="0,16,0,0" CornerRadius="6">
-                        <StackPanel>
-                            <TextBlock Text="Updates" FontWeight="SemiBold" Margin="0,0,0,4"/>
-                            <TextBlock FontSize="12" Foreground="#6B7280" Margin="0,0,0,8">
-                                <Run Text="Current version: v"/>
-                                <Run Text="{Binding CurrentVersion, Mode=OneWay}"/>
-                            </TextBlock>
-                            <TextBlock Text="{Binding UpdateStatusMessage}" FontSize="12"
-                                       TextWrapping="Wrap" Margin="0,0,0,8"
-                                       Visibility="{Binding UpdateStatusMessage, Converter={StaticResource StringToVisibility}}"/>
+                                          Updates panel.
 
-                            <!-- Idle state: no update found yet -->
-                            <Button Content="Check for updates" Padding="14,8"
-                                    Command="{Binding CheckForUpdateCommand}"
-                                    Visibility="{Binding UpdateAvailable, Converter={StaticResource BoolToVisibility}, FallbackValue=Visible}"/>
+                                          v1.2.1: was using BoolToVisibilityConverter to toggle two
+                                          buttons. The Check button was missing entirely on first
+                                          install — binding was evaluating but the button rendered
+                                          empty. Replaced with two explicitly-named Button elements
+                                          gated only by UpdateAvailable=true (Download) vs anything
+                                          else (Check). No converter in the chain = nothing to fail.
 
-                            <!-- Update-found state -->
-                            <StackPanel Orientation="Horizontal"
-                                        Visibility="{Binding UpdateAvailable, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}">
-                                <TextBlock VerticalAlignment="Center" FontSize="12" Margin="0,0,10,0">
-                                    <Run Text="v"/>
-                                    <Run Text="{Binding AvailableVersion, Mode=OneWay}"/>
-                                    <Run Text=" is available."/>
-                                </TextBlock>
-                                <Button Content="Download &amp; restart" Style="{StaticResource PrimaryButton}"
-                                        Padding="14,8"
-                                        Command="{Binding DownloadAndRestartCommand}"/>
-                            </StackPanel>
-                        </StackPanel>
-                    </Border>
+                                          Both buttons are kept in the tree at all times; one is
+                                          Collapsed via UpdateAvailable.
+                                        -->
+                                        <Border Background="#EEF2FF" Padding="12" Margin="0,16,0,0" CornerRadius="6">
+                                            <StackPanel>
+                                                <TextBlock Text="Updates" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                                <TextBlock FontSize="12" Foreground="#6B7280" Margin="0,0,0,8">
+                                                    <Run Text="Current version: v"/>
+                                                    <Run Text="{Binding CurrentVersion, Mode=OneWay}"/>
+                                                </TextBlock>
+                                                <TextBlock Text="{Binding UpdateStatusMessage}" FontSize="12"
+                                                           TextWrapping="Wrap" Margin="0,0,0,8"
+                                                           Visibility="{Binding UpdateStatusMessage, Converter={StaticResource StringToVisibility}}"/>
+
+                                                <!-- Idle state: always visible when no update found. -->
+                                                <Button x:Name="CheckForUpdatesButton"
+                                                        Content="Check for updates"
+                                                        Padding="14,8" Margin="0,0,0,4" MinHeight="32"
+                                                        Command="{Binding CheckForUpdateCommand}">
+                                                    <Button.Style>
+                                                        <Style TargetType="Button">
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding UpdateAvailable}" Value="True">
+                                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Button.Style>
+                                                </Button>
+
+                                                <!-- Update-found state: visible only when UpdateAvailable=true. -->
+                                                <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                                    <StackPanel.Style>
+                                                        <Style TargetType="StackPanel">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding UpdateAvailable}" Value="True">
+                                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </StackPanel.Style>
+                                                    <TextBlock VerticalAlignment="Center" FontSize="12" Margin="0,0,10,0">
+                                                        <Run Text="v"/>
+                                                        <Run Text="{Binding AvailableVersion, Mode=OneWay}"/>
+                                                        <Run Text=" is available."/>
+                                                    </TextBlock>
+                                                    <Button Content="Download &amp; restart"
+                                                            Style="{StaticResource PrimaryButton}"
+                                                            Padding="14,8"
+                                                            Command="{Binding DownloadAndRestartCommand}"/>
+                                                </StackPanel>
+                                            </StackPanel>
+                                        </Border>
                 </StackPanel>
             </Border>
         </Grid>
