@@ -154,4 +154,4 @@ public sealed record LabelSpec(
     byte PrintSpeed = 4
 );
 
-public sealed record LabelDimensions(int WidthDots, int HeightDots);
+public sealed record LabelDimensions(int WidthDots, int HeightDots, int GapDots = 24);

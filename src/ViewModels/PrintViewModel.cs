@@ -27,8 +27,13 @@ public partial class PrintViewModel : ObservableObject
 
     public ObservableCollection<string> RecentJobs { get; } = new();
 
-    // Standard 4" x 6" at 203 dpi = 812 x 1218 dots (matches ZR300I default)
-    public LabelDimensions Dims { get; } = new(812, 1218);
+    // 73mm × 20mm RFID inlay at 203 dpi (the operator's stock media):
+    //   width  = 73 mm * 203/25.4 ≈ 583 dots
+    //   height = 20 mm * 203/25.4 ≈ 160 dots
+    // PTK_SetLabelHeight will use (160, 24, 0, false) on every Browser Print
+    // job, which is the right shape for this stock. Change the constructor
+    // below if you switch media later.
+    public LabelDimensions Dims { get; } = new(583, 160);
 
     partial void OnSkuChanged(string value) => UpdatePreview();
     partial void OnItemNameChanged(string value) => UpdatePreview();

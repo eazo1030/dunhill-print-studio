@@ -294,8 +294,7 @@ public sealed class PrintService : IDisposable
                 // Plain label, no EPC. Encode path issues one Browser Print
                 // call; we have no read-back to verify against.
                 var pp = PostekBrowserPrintTransport.BuildLabelJob(
-                    text, dims.WidthDots, dims.HeightDots,
-                    Math.Max(0, dims.HeightDots / 25), epcHex: "");
+                    text, dims.WidthDots, dims.HeightDots, dims.GapDots, epcHex: "");
                 var ok = await bp.SendAsync("1", pp, ct).ConfigureAwait(false);
                 return new PrintJobOutcome(
                     ok ? PrintJobStatus.Done : PrintJobStatus.Failed,
@@ -309,7 +308,7 @@ public sealed class PrintService : IDisposable
                 printText: text,
                 labelWidthDots: dims.WidthDots,
                 labelHeightDots: dims.HeightDots,
-                labelGapDots: Math.Max(0, dims.HeightDots / 25),
+                labelGapDots: dims.GapDots,
                 epcStartBlock: 2,
                 maxAttempts: 2,
                 ct: ct).ConfigureAwait(false);

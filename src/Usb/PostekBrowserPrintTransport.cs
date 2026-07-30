@@ -162,6 +162,12 @@ public sealed class PostekBrowserPrintTransport : IDisposable
     /// shape Browser Print's Java side parses as
     /// <c>List&lt;Map&lt;String,Object&gt;&gt;</c>.
     /// </summary>
+    /// <remarks>
+    /// Default dimensions are for the ZR300I's typical benchmark
+    /// 4"×3" at 203dpi (812×244 dots, 24-dot gap). For RFID inlays, the
+    /// operator's media dimensions are much smaller: pass the actual
+    /// physical dimensions in inches/mm to the calling view-model.
+    /// </remarks>
     public static string BuildLabelJob(
         string printText,
         int labelWidthDots,
@@ -182,6 +188,12 @@ public sealed class PostekBrowserPrintTransport : IDisposable
                 ("PTK_SetDirection", "B"),
                 ("PTK_SetPrintSpeed", "4"),
                 ("PTK_SetDarkness", "10"),
+                // PTK_SetLabelHeight signature: (lheight, gapH, gapOffset, bFlag)
+                // lheight in dots, gapH in dots, gapOffset=0 (no offset),
+                // bFlag=false (gapOffset not used).
+                // For an RFID inlay like the operator's 73×20mm at 203dpi:
+                //   labelHeightDots = 20 mm * 203 / 25.4 = 160
+                //   labelGapDots    = ~3mm* 203 / 25.4 = 24
                 ("PTK_SetLabelHeight", $"{labelHeightDots},{labelGapDots},0,false"),
                 ("PTK_SetLabelWidth", $"{labelWidthDots}"),
                 ("PTK_DrawText_TrueType", $"30,60,40,0,Arial,1,700,0,0,0,{printText}"),
