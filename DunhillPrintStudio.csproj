@@ -80,40 +80,17 @@
     <Compile Include="src\Program.cs" /> here — that triggers MSB3105
     "Duplicate 'Compile' items were included." error from the SDK's
     default item rules. Only needed if EnableDefaultCompileItems=false.
-  -->
 
-  <!--
-    EnableDefaultApplicationDefinition=false disables WPF's automatic XAML
-    inclusion, so every .xaml file (besides App.xaml, listed above as the
-    <ApplicationDefinition>) must be listed explicitly as a <Page>. Without
-    these, the XAML files compile to nothing, every InitializeComponent()
-    call resolves to a missing member, and we get CS0101/CS0117 build errors.
+    Likewise, all *.xaml files under the project directory are auto-globbed
+    by the SDK as <Page> items via EnableDefaultPageItems=true (the default).
+    Listing them explicitly here triggers NETSDK1022 "Duplicate 'Page' items".
+    The SDK finds MainWindow.xaml, PrintView.xaml, SettingsView.xaml,
+    QueueView.xaml, HistoryView.xaml, InventoryView.xaml automatically and
+    generates InitializeComponent() correctly for each one.
+
+    App.xaml is the single exception: EnableDefaultApplicationDefinition=false
+    (above) disables the SDK's auto <ApplicationDefinition> glob, so App.xaml
+    must be listed explicitly as an <ApplicationDefinition> (see above).
   -->
-  <ItemGroup>
-    <Page Include="src\MainWindow.xaml">
-      <Generator>MSBuild:Compile</Generator>
-      <SubType>Designer</SubType>
-    </Page>
-    <Page Include="src\Views\PrintView.xaml">
-      <Generator>MSBuild:Compile</Generator>
-      <SubType>Designer</SubType>
-    </Page>
-    <Page Include="src\Views\SettingsView.xaml">
-      <Generator>MSBuild:Compile</Generator>
-      <SubType>Designer</SubType>
-    </Page>
-    <Page Include="src\Views\QueueView.xaml">
-      <Generator>MSBuild:Compile</Generator>
-      <SubType>Designer</SubType>
-    </Page>
-    <Page Include="src\Views\HistoryView.xaml">
-      <Generator>MSBuild:Compile</Generator>
-      <SubType>Designer</SubType>
-    </Page>
-    <Page Include="src\Views\InventoryView.xaml">
-      <Generator>MSBuild:Compile</Generator>
-      <SubType>Designer</SubType>
-    </Page>
-  </ItemGroup>
 
 </Project>
