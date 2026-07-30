@@ -92,6 +92,7 @@ jobs:
             --packTitle $packTitle `
             --packAuthors $packAuthors `
             --icon "${{ github.workspace }}\assets\app.ico" `
+            --shortcuts Desktop `
             --outputDir "Releases"
           Get-ChildItem -Recurse Releases | Select-Object FullName, Length
 
