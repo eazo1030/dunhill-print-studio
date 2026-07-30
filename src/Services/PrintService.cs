@@ -265,26 +265,70 @@ public sealed class PrintService : IDisposable
 
     /// <summary>
     /// High-level print path that carries a LabelSpec and RFID EPC.
-    /// Routed through Browser Print if that's the active transport
+    /// Routes through Browser Print if that's the active transport
     /// (PPLZ builders + EPC encoding happen here, since Browser Print
-    /// expects <c>{PTK_*}</c> calls, not raw PPLZ bytes).
+    /// expects <c>{PTK_*}</c> calls, not raw PPLZ bytes). When an EPC is
+    /// supplied, runs a verify-encode-readback loop and emits the
+    /// appropriate <see cref="PrintJobStatus"/> result.
     /// </summary>
-    public async Task<bool> PrintLabelJobAsync(LabelSpec spec, LabelDimensions dims, string? epcHex, CancellationToken ct = default)
+    public async Task<PrintJobOutcome> PrintLabelJobAsync(LabelSpec spec, LabelDimensions dims, string? epcHex, CancellationToken ct = default)
     {
+        // Try the active transport in priority order; settle on the first match.
         PostekBrowserPrintTransport? bp;
-        lock (_lock) { bp = _browserPrint; }
+        PostekTcpTransport? tcp;
+        PostekSpoolerTransport? spooler;
+        PostekUsbTransport? usb;
+        lock (_lock)
+        {
+            bp = _browserPrint; tcp = _tcp; spooler = _spooler; usb = _usb;
+        }
+
+        var epc = (epcHex ?? "").Trim();
+        var text = (spec?.Sku ?? "") + (string.IsNullOrEmpty(spec?.Name) ? "" : "  " + spec.Name);
+
+        // Browser Print path — has full verify-on-print support.
         if (bp is not null && bp.IsConnected)
         {
-            var pp = PostekBrowserPrintTransport.BuildLabelJob(
-                printText: spec.Sku + (string.IsNullOrEmpty(spec.Name) ? "" : "  " + spec.Name),
+            if (epc.Length == 0)
+            {
+                // Plain label, no EPC. Encode path issues one Browser Print
+                // call; we have no read-back to verify against.
+                var pp = PostekBrowserPrintTransport.BuildLabelJob(
+                    text, dims.WidthDots, dims.HeightDots,
+                    Math.Max(0, dims.HeightDots / 25), epcHex: "");
+                var ok = await bp.SendAsync("1", pp, ct).ConfigureAwait(false);
+                return new PrintJobOutcome(
+                    ok ? PrintJobStatus.Done : PrintJobStatus.Failed,
+                    bp.LastReceiveData,
+                    bp.LastError);
+            }
+
+            // EPC path: encode+readback verify loop, up to 2 attempts.
+            var verified = await bp.VerifyEncodeAsync(
+                expectedEpcHex: epc,
+                printText: text,
                 labelWidthDots: dims.WidthDots,
                 labelHeightDots: dims.HeightDots,
                 labelGapDots: Math.Max(0, dims.HeightDots / 25),
-                epcHex: epcHex ?? "");
-            return await bp.SendAsync("1", pp, ct).ConfigureAwait(false);
+                epcStartBlock: 2,
+                maxAttempts: 2,
+                ct: ct).ConfigureAwait(false);
+
+            return verified
+                ? new PrintJobOutcome(PrintJobStatus.Done, bp.LastReceiveData, null)
+                : new PrintJobOutcome(PrintJobStatus.VoidLabel, bp.LastReceiveData, bp.LastError);
         }
-        // Fall through to plain PPLZ-byte path for the other transports.
-        return await PrintAsync(spec, dims, ct);
+
+        // Non-Browser-Print transports don't have access to a verify loop
+        // without the Browser Print Server, so they degrade to one-shot
+        // print. Caller is responsible for downstream verification if
+        // they care about it (e.g. via a UHF reader plugged elsewhere).
+        var pplz = PplzBuilder.BuildItemLabel(spec ?? new LabelSpec(string.Empty), dims);
+        var sent = await SendRawAsync(pplz, ct).ConfigureAwait(false);
+        return new PrintJobOutcome(
+            sent ? PrintJobStatus.Done : PrintJobStatus.Failed,
+            null,
+            LastError);
     }
 
     public void Dispose() => Disconnect();

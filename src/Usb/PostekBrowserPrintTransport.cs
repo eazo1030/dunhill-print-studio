@@ -240,6 +240,144 @@ public sealed class PostekBrowserPrintTransport : IDisposable
         return arr.ToString();
     }
 
+    /// <summary>
+    /// Build the read-only request that asks the printer to read back
+    /// the EPC/TID/User data of the tag under the antenna. The demo
+    /// HTML uses this shape verbatim:
+    /// <c>[{"PTK_OpenUSBPort":255},{"PTK_ReadRFIDLabelData":"0,0,1,TID:,256"},{"PTK_CloseUSBPort":""}]</c>.
+    /// </summary>
+    /// <param name="area">Memory bank to read: 0=TID, 1=EPC, 3=USER.</param>
+    /// <param name="startBlock">First block (EPC bank starts at 2 for 96-bit EPC).</param>
+    /// <param name="byteLength">Bytes to read back.</param>
+    /// <param name="prefix">LCD-display prefix (e.g. "TID:", "EPC:"); appears verbatim in ReceiveData.</param>
+    /// <param name="displayLength">Length field for the LCD display message (the PDF
+    /// defines a 5th arg that's effectively the LCD buffer size; Postek firmware
+    /// accepts up to ~256). Pass 256 to match the demo; larger for human-readable
+    /// readouts.</param>
+    public static string BuildReadJob(int area = 1, int startBlock = 2, int byteLength = 12,
+        string prefix = "EPC:", int displayLength = 256)
+    {
+        var calls = new (string, object)[]
+        {
+            ("PTK_OpenUSBPort", "255"),
+            ("PTK_ReadRFIDLabelData", $"{area},{startBlock},{byteLength},{prefix},{displayLength}"),
+            ("PTK_CloseUSBPort", ""),
+        };
+        return SerializePtkCalls(calls);
+    }
+
+    /// <summary>
+    /// Issue a single read against the printer via <c>reqParam=4</c>.
+    /// Returns the raw <c>ReceiveData</c> string on success, or null on
+    /// failure (with <see cref="LastError"/> set).
+    /// </summary>
+    /// <remarks>
+    /// The PDF API for <c>PTK_ReadRFIDLabelData</c> has the parameter
+    /// order <c>(area, startBlock, byteLength, name, length)</c> — the
+    /// last <c>length</c> field is the display length for the LCD message,
+    /// not the read size. We set it to 96 — the standard 12-byte EPC
+    /// representation — because the actual byte-length is the third
+    /// argument. If the ZR300I returns a different interpretation we'll
+    /// see that here.
+    /// </remarks>
+    public async Task<string?> ReadRfidAsync(int area = 1, int startBlock = 2, int byteLength = 12,
+        string prefix = "EPC:", CancellationToken ct = default)
+    {
+        LastReceiveData = null;
+        var pp = BuildReadJob(area, startBlock, byteLength, prefix);
+        var ok = await SendAsync("4", pp, ct).ConfigureAwait(false);
+        if (!ok) return null;
+        return LastReceiveData;
+    }
+
+    /// <summary>
+    /// Encode an EPC onto a label, then read it back, then compare.
+    /// Returns true if the readback equals <paramref name="expectedEpcHex"/>
+    /// (case-insensitive, with optional <paramref name="prefix"/> stripped).
+    /// On mismatch, the most recent <c>LastReceiveData</c> is the actual
+    /// value that came back from the printer.
+    /// </summary>
+    /// <remarks>
+    /// Time budget per attempt: ~3 seconds. The label feed is synchronous
+    /// on Postek printers, the antenna is right under the TPH, and a
+    /// 12-byte EPC read completes in well under 200ms on every Gen 2 chip
+    /// we've worked with. If we see flakiness here, we may need to bump
+    /// the sleep for the bench-style printer with a slower RF module.
+    /// </remarks>
+    public async Task<bool> VerifyEncodeAsync(
+        string expectedEpcHex,
+        string printText,
+        int labelWidthDots,
+        int labelHeightDots,
+        int labelGapDots,
+        int epcStartBlock = 2,
+        int maxAttempts = 2,
+        CancellationToken ct = default)
+    {
+        var normalized = (expectedEpcHex ?? "").Trim().Replace(" ", "").Replace("-", "").ToLowerInvariant();
+        if (normalized.Length == 0 || normalized.Length % 2 != 0)
+        {
+            LastError = "Cannot verify: EPC hex is empty or odd-length.";
+            return false;
+        }
+        int nWDataNum = normalized.Length / 2;
+
+        for (int attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            // Phase 1: encode + print (or just re-print on retry).
+            var encodePp = BuildLabelJob(
+                printText, labelWidthDots, labelHeightDots, labelGapDots,
+                normalized, epcStartBlock);
+            var encodeOk = await SendAsync("1", encodePp, ct).ConfigureAwait(false);
+            if (!encodeOk)
+            {
+                LastError = $"encode attempt {attempt} failed: {LastError}";
+                continue;
+            }
+
+            // The encoder→antenna latency is real. 250ms is conservative
+            // for a stock Postek TXr; 600ms gives margin for rewind cycles.
+            try { await Task.Delay(TimeSpan.FromMilliseconds(600), ct).ConfigureAwait(false); }
+            catch (OperationCanceledException) { return false; }
+
+            // Phase 2: read back the same memory area (EPC bank, block 2).
+            // Each byte is two ASCII hex chars in ReceiveData, so we ask
+            // for nWDataNum bytes and expect (2 * nWDataNum) ASCII chars.
+            var read = await ReadRfidAsync(
+                area: 1, startBlock: epcStartBlock, byteLength: nWDataNum,
+                prefix: "", ct: ct).ConfigureAwait(false);
+            if (read is null)
+            {
+                LastError = $"read-back attempt {attempt} failed: {LastError}";
+                continue;
+            }
+
+            // Browser Print may prefix with the PTK name (PDF default is
+            // the name string we passed). Strip it before comparison.
+            var stripped = StripReadPrefix(read);
+            var lower = stripped.ToLowerInvariant();
+            if (lower == normalized) return true;
+
+            // Mismatch — keep last receive data so the caller can inspect.
+            LastError = $"EPC mismatch on attempt {attempt}: expected {normalized}, " +
+                         $"got {lower} (raw: '{Truncate(read, 80)}').";
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Strip the leading prefix string that <c>PTK_ReadRFIDLabelData</c>
+    /// echoes back. Browser Print typically returns the prefix verbatim
+    /// (e.g. "EPC:30313233…"); some firmwares pad/truncate.
+    /// </summary>
+    private static string StripReadPrefix(string raw)
+    {
+        var s = (raw ?? "").Trim();
+        var colon = s.IndexOf(':');
+        return colon >= 0 && colon + 1 < s.Length ? s.Substring(colon + 1) : s;
+    }
+
     public void Close()
     {
         _httpClient?.Dispose();

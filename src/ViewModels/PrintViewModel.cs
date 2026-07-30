@@ -68,18 +68,45 @@ public partial class PrintViewModel : ObservableObject
         try
         {
             var spec = new LabelSpec(Sku, ItemName, Quantity, Serial, Epc: Epc, EncodeRfid: EncodeRfid);
-            var ok = await _print.PrintAsync(spec, Dims);
-            if (ok)
+            PrintJobOutcome outcome;
+            try
             {
-                Status = $"Printed {Quantity}x {Sku} at {DateTime.Now:HH:mm:ss}";
-                LastError = null;
-                RecentJobs.Insert(0, $"{DateTime.Now:HH:mm:ss}  {Sku} x{Quantity}");
-                if (RecentJobs.Count > 20) RecentJobs.RemoveAt(20);
+                outcome = await _print.PrintLabelJobAsync(spec, Dims, Epc);
             }
-            else
+            catch (Exception ex)
             {
-                LastError = _print.LastError;
+                LastError = $"Print threw: {ex.Message}";
                 Status = "Print failed";
+                return;
+            }
+
+            // Compact, human-readable outcome line.
+            LastError = outcome.Error;
+            switch (outcome.Status)
+            {
+                case PrintJobStatus.Done:
+                    var readback = string.IsNullOrEmpty(outcome.ReadbackHex)
+                        ? ""
+                        : $" (EPC verify: {outcome.ReadbackHex})";
+                    Status = $"Printed {Quantity}× {Sku} at {DateTime.Now:HH:mm:ss}{readback}";
+                    RecentJobs.Insert(0, $"{DateTime.Now:HH:mm:ss}  {Sku} ×{Quantity}  ✓");
+                    if (RecentJobs.Count > 20) RecentJobs.RemoveAt(20);
+                    LastError = null;
+                    break;
+                case PrintJobStatus.VoidLabel:
+                    // Void-on-fail: the printer marked the label with a VOID overlay
+                    // (or our job emits a VOID rectangle when verify fails). The
+                    // inventory must NOT be incremented for this SKU.
+                    Status = $"VOIDED {Sku} — EPC didn't verify ({outcome.Error ?? "read mismatch"})";
+                    RecentJobs.Insert(0, $"{DateTime.Now:HH:mm:ss}  {Sku} ×{Quantity}  ✗ VOID");
+                    if (RecentJobs.Count > 20) RecentJobs.RemoveAt(20);
+                    break;
+                case PrintJobStatus.Failed:
+                default:
+                    Status = $"Print failed: {outcome.Error ?? "(unknown)"}";
+                    RecentJobs.Insert(0, $"{DateTime.Now:HH:mm:ss}  {Sku} ×{Quantity}  ✗ FAILED");
+                    if (RecentJobs.Count > 20) RecentJobs.RemoveAt(20);
+                    break;
             }
         }
         finally { IsBusy = false; }

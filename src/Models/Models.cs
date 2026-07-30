@@ -11,6 +11,23 @@ public sealed record InventoryItem(
     DateTime UpdatedAt
 );
 
+/// <summary>
+/// One-shot result of a print job. Lets the UI display a status strip
+/// "Printed" vs "Void label (EPC didn't write)" vs "Failed" without
+/// deciding server-side. Mirrors the existing <see cref="PrintJob.Status"/>
+/// enum so the local outcome can be promoted into a persisted job entry.
+/// </summary>
+public sealed record PrintJobOutcome(
+    PrintJobStatus Status,
+    string? ReadbackHex,
+    string? Error
+)
+{
+    public bool IsSuccess => Status == PrintJobStatus.Done;
+    public bool IsVoided => Status == PrintJobStatus.VoidLabel;
+    public bool IsFailed => Status == PrintJobStatus.Failed;
+}
+
 public sealed record PrintJob(
     string JobId,
     string Sku,
