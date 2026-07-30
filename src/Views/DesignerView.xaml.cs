@@ -164,3 +164,21 @@ public partial class DesignerView : UserControl
         return null;
     }
 }
+
+/// <summary>
+/// Shared accessor the per-element drag handlers (in DesignerView.xaml.cs)
+/// use to talk to the DesignerViewModel: push an undo snapshot at drag-start,
+/// refresh CanUndo on drag-end, and read the currently-selected element for
+/// keyboard nudging. DesignerViewModel assigns the delegates in its ctor.
+/// </summary>
+public static class DesignerViewModelBridge
+{
+    /// <summary>Currently selected element (for keyboard nudging).</summary>
+    public static LabelElement? SelectedElement { get; set; }
+
+    /// <summary>Action the VM assigns to push an undo snapshot (called on drag-start).</summary>
+    public static Action? PushSnapshot { get; set; }
+
+    /// <summary>Action the VM assigns to fire after a drag finishes (refreshes CanUndo).</summary>
+    public static Action? OnDragCompleted { get; set; }
+}
