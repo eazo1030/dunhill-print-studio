@@ -157,8 +157,10 @@ public sealed class PostekBrowserPrintTransport : IDisposable
 
     /// <summary>
     /// Build the standard "print one text label + encode an EPC + print"
-    /// job in a single Browser Print call. The string returned here is
-    /// the value of the form field <c>printparams</c>.
+    /// job in a single Browser Print call. Returns a stringified JSON
+    /// array of <c>{"PTK_&lt;Method&gt;": "&lt;args&gt;"}</c> objects — the
+    /// shape Browser Print's Java side parses as
+    /// <c>List&lt;Map&lt;String,Object&gt;&gt;</c>.
     /// </summary>
     public static string BuildLabelJob(
         string printText,
@@ -173,9 +175,9 @@ public sealed class PostekBrowserPrintTransport : IDisposable
         if (epcHex.Length == 0)
         {
             // Plain label, no RFID.
-            var plain = new (string, object?)[]
+            var plain = new (string name, object value)[]
             {
-                ("PTK_OpenUSBPort", 255),
+                ("PTK_OpenUSBPort", "255"),
                 ("PTK_ClearBuffer", ""),
                 ("PTK_SetDirection", "B"),
                 ("PTK_SetPrintSpeed", "4"),
@@ -186,29 +188,56 @@ public sealed class PostekBrowserPrintTransport : IDisposable
                 ("PTK_PrintLabel", "1,1"),
                 ("PTK_CloseUSBPort", ""),
             };
-            return JsonSerializer.Serialize(plain);
+            return SerializePtkCalls(plain);
         }
 
         // Validate: must be even-length hex string. nWDataNum = bytes.
         if (epcHex.Length % 2 != 0)
             throw new ArgumentException("EPC hex must have even length.", nameof(epcHex));
         int nWDataNum = epcHex.Length / 2;
-        var withRfid = new (string, object?)[]
+        var withRfid = new (string name, object value)[]
         {
-            ("PTK_OpenUSBPort", 255),
+            ("PTK_OpenUSBPort", "255"),
+            ("PTK_PcxGraphicsDel", "*"),
             ("PTK_ClearBuffer", ""),
             ("PTK_SetDirection", "B"),
             ("PTK_SetPrintSpeed", "4"),
             ("PTK_SetDarkness", "10"),
             ("PTK_SetLabelHeight", $"{labelHeightDots},{labelGapDots},0,false"),
             ("PTK_SetLabelWidth", $"{labelWidthDots}"),
-            ("PTK_DrawText_TrueType", $"30,60,40,0,Arial,1,700,0,0,0,{printText}"),
-            ("PTK_DrawBarcode", $"30,150,0,1,2,2,50,B,{printText}"),
             ("PTK_RWRFIDLabel", $"1,0,{epcStartBlock},{nWDataNum},1,{epcHex}"),
+            ("PTK_DrawRectangle", $"58,15,3,{labelWidthDots - 8},{labelHeightDots - 20}"),
+            ("PTK_DrawBarcode", $"30,150,0,1,2,2,50,B,{printText}"),
+            ("PTK_DrawLineOr", "58,111,500,3"),
+            ("PTK_DrawTextEx", "80,130,0,3,1,1,N,Internal Soft Font,0"),
+            ("PTK_DrawBar2D_PDF417", $"80,180,400,300,0,0,3,7,10,2,0,0,{printText}"),
+            ("PTK_DrawBar2D_QR", "80,28,180,180,0,3,2,0,0,Postek Electronics Co. Ltd."),
+            ("PTK_DrawText_TrueType", $"580,580,64,0,Arial,1,700,0,0,0,Use different ID_NAME for different Truetype font objects"),
             ("PTK_PrintLabel", "1,1"),
             ("PTK_CloseUSBPort", ""),
         };
-        return JsonSerializer.Serialize(withRfid);
+        return SerializePtkCalls(withRfid);
+    }
+
+    /// <summary>
+    /// Browser Print expects an array of single-key objects, NOT tuples:
+    /// <c>[{"PTK_OpenUSBPort": "255"}, {"PTK_ClearBuffer": ""}]</c>.
+    /// Using list-of-tuples makes Browser Print's Java side fail to parse
+    /// because <c>List&lt;Map&lt;String, Object&gt;&gt;</c> can't reconstruct
+    /// a String→Object map from a [String, Object] pair array.
+    /// </summary>
+    private static string SerializePtkCalls((string name, object value)[] calls)
+    {
+        var arr = new System.Text.StringBuilder("[");
+        for (int i = 0; i < calls.Length; i++)
+        {
+            if (i > 0) arr.Append(',');
+            arr.Append('{').Append(JsonSerializer.Serialize(calls[i].name));
+            arr.Append(':').Append(JsonSerializer.Serialize(calls[i].value));
+            arr.Append('}');
+        }
+        arr.Append(']');
+        return arr.ToString();
     }
 
     public void Close()

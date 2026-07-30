@@ -95,6 +95,7 @@ public partial class SettingsViewModel : ObservableObject
     {
         null => "Disconnected",
         var c when c.StartsWith("TCP") => "TCP",
+        var c when c.StartsWith("Browser") => "Browser Print",
         var c when c.StartsWith("Spooler") => "Spooler",
         var c when c.StartsWith("USB") => "USB",
         _ => "Other"
