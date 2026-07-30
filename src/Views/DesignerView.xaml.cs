@@ -1,3 +1,5 @@
+using System;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -30,8 +32,37 @@ public partial class DesignerView : UserControl
 
     private void OnElementMouseDown(object sender, MouseButtonEventArgs e)
     {
+        // DIAGNOSTIC LOGGING (v1.2.4) — write every drag-related event to
+        // %LOCALAPPDATA%\DunhillPrintStudio\startup.log so we can see what's
+        // actually happening when an element is clicked. This is verbose on
+        // purpose; once the drag works, this can be slimmed down to just the
+        // drag-completion line.
+        try
+        {
+            var log = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "DunhillPrintStudio", "startup.log");
+            File.AppendAllText(log,
+                $"[{DateTime.Now:HH:mm:ss.fff}] DRAG mousedown: sender={sender?.GetType().Name}, " +
+                $"originalSource={e.OriginalSource?.GetType().Name}, handled={e.Handled}, " +
+                $"leftButton={e.LeftButton}, clickCount={e.ClickCount}, " +
+                $"position=({e.GetPosition(this).X:F0},{e.GetPosition(this).Y:F0})\n");
+        }
+        catch { /* logging must never crash the app */ }
+
         if (sender is not ContentPresenter presenter) return;
         if (presenter.DataContext is not LabelElement element) return;
+
+        try
+        {
+            var log = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "DunhillPrintStudio", "startup.log");
+            File.AppendAllText(log,
+                $"[{DateTime.Now:HH:mm:ss.fff}] DRAG mousedown-OK: element={element.Type} " +
+                $"X={element.X} Y={element.Y}, presenter size={presenter.ActualWidth:F0}x{presenter.ActualHeight:F0}\n");
+        }
+        catch { }
 
         _dragElement     = element;
         _dragHost        = presenter;
@@ -53,6 +84,23 @@ public partial class DesignerView : UserControl
     {
         if (_dragElement == null || _dragHost == null) return;
         if (e.LeftButton != MouseButtonState.Pressed) return;
+
+        // DIAGNOSTIC: only log the first move of each drag (avoid 60/sec spam)
+        if (!_dragMoved)
+        {
+            try
+            {
+                var log = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "DunhillPrintStudio", "startup.log");
+                File.AppendAllText(log,
+                    $"[{DateTime.Now:HH:mm:ss.fff}] DRAG mousemove-first: sender={sender?.GetType().Name}, " +
+                    $"originalSource={e.OriginalSource?.GetType().Name}, handled={e.Handled}, " +
+                    $"element={_dragElement.Type} ({_dragElement.X},{_dragElement.Y}) -> " +
+                    $"mouse=({e.GetPosition(_dragHost).X:F0},{e.GetPosition(_dragHost).Y:F0})\n");
+            }
+            catch { }
+        }
 
         var pos = e.GetPosition(_dragHost);
         var dx = pos.X - _dragStartMouseX;
