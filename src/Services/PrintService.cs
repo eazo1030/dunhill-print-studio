@@ -302,7 +302,13 @@ public sealed class PrintService : IDisposable
                     bp.LastError);
             }
 
-            // EPC path: encode+readback verify loop, up to 2 attempts.
+            // EPC path: encode+readback verify loop, one attempt only.
+            // A failed encode dumps a 'VOID' label rather than chip-fail-the-job;
+            // the user re-prints after fixing the cause. Two encodes per click
+            // were physically advancing two labels in the printer even when
+            // both VOI'd, which is what filled the recent-print log with
+            // phantom entries. We keep the loop structure for the future but
+            // default to 1 attempt to match operator expectation.
             var verified = await bp.VerifyEncodeAsync(
                 expectedEpcHex: epc,
                 printText: text,
@@ -310,7 +316,7 @@ public sealed class PrintService : IDisposable
                 labelHeightDots: dims.HeightDots,
                 labelGapDots: dims.GapDots,
                 epcStartBlock: 2,
-                maxAttempts: 2,
+                maxAttempts: 1,
                 ct: ct).ConfigureAwait(false);
 
             return verified

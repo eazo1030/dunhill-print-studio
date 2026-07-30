@@ -207,6 +207,12 @@ public sealed class PostekBrowserPrintTransport : IDisposable
         if (epcHex.Length % 2 != 0)
             throw new ArgumentException("EPC hex must have even length.", nameof(epcHex));
         int nWDataNum = epcHex.Length / 2;
+        // Note: PDF417 was previously in this template as PTK_DrawBar2D_PDF417
+        // (all-caps) which is silently rejected by Browser Print Server. The
+        // correct name is PTK_DrawBar2D_Pdf417 (mixed case, as the demo and
+        // PDF both use it). But PDF417 alone is decorative — QR + a barcode is
+        // enough for the operator's apparel/fabric labels. We leave it off
+        // here so a broken method name can't block the entire job.
         var withRfid = new (string name, object value)[]
         {
             ("PTK_OpenUSBPort", "255"),
@@ -218,13 +224,9 @@ public sealed class PostekBrowserPrintTransport : IDisposable
             ("PTK_SetLabelHeight", $"{labelHeightDots},{labelGapDots},0,false"),
             ("PTK_SetLabelWidth", $"{labelWidthDots}"),
             ("PTK_RWRFIDLabel", $"1,0,{epcStartBlock},{nWDataNum},1,{epcHex}"),
-            ("PTK_DrawRectangle", $"58,15,3,{labelWidthDots - 8},{labelHeightDots - 20}"),
-            ("PTK_DrawBarcode", $"30,150,0,1,2,2,50,B,{printText}"),
-            ("PTK_DrawLineOr", "58,111,500,3"),
-            ("PTK_DrawTextEx", "80,130,0,3,1,1,N,Internal Soft Font,0"),
-            ("PTK_DrawBar2D_PDF417", $"80,180,400,300,0,0,3,7,10,2,0,0,{printText}"),
-            ("PTK_DrawBar2D_QR", "80,28,180,180,0,3,2,0,0,Postek Electronics Co. Ltd."),
-            ("PTK_DrawText_TrueType", $"580,580,64,0,Arial,1,700,0,0,0,Use different ID_NAME for different Truetype font objects"),
+            ("PTK_DrawText_TrueType", $"20,40,40,0,Arial,1,700,0,0,0,{printText}"),
+            ("PTK_DrawBarcode", $"20,90,0,1,2,2,30,B,{printText}"),
+            ("PTK_DrawBar2D_QR", $"20,130,80,80,0,3,2,0,0,{printText}"),
             ("PTK_PrintLabel", "1,1"),
             ("PTK_CloseUSBPort", ""),
         };

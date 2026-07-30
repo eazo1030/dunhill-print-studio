@@ -81,6 +81,17 @@ public partial class SettingsViewModel : ObservableObject
     public SettingsViewModel(PrintService print)
     {
         _print = print;
+        // Mirror the print service's status events into our own observable
+        // properties. Without this hook the toolbar's "Connected: …" line and
+        // the Mode label stay stale until the user changes another input.
+        _print.StatusChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(Status));
+            OnPropertyChanged(nameof(ConnectionDetail));
+            OnPropertyChanged(nameof(IsConnected));
+            OnPropertyChanged(nameof(PrinterModel));
+            OnPropertyChanged(nameof(ConnectionMode));
+        };
         // Best-effort initial fill so the picker isn't empty on first load.
         try
         {
@@ -91,15 +102,25 @@ public partial class SettingsViewModel : ObservableObject
         catch { /* not Windows or no spooler; UI will surface Refresh */ }
     }
 
-    public string ConnectionMode => _print.Status.ConnectionType switch
+    /// <summary>
+    /// Convert <see cref="PrintService.Status.ConnectionType"/> to a
+    /// short human-readable mode label. Raised as
+    /// <see cref="CommunityToolkit.Mvvm.ComponentModel.PropertyChangedEventArgs"/>
+    /// via the &lt;Mode /&gt; binding in the status strip.
+    /// </summary>
+    public string ConnectionMode
     {
-        null => "Disconnected",
-        var c when c.StartsWith("TCP") => "TCP",
-        var c when c.StartsWith("Browser") => "Browser Print",
-        var c when c.StartsWith("Spooler") => "Spooler",
-        var c when c.StartsWith("USB") => "USB",
-        _ => "Other"
-    };
+        get
+        {
+            var c = _print.Status.ConnectionType ?? "";
+            if (string.IsNullOrEmpty(c)) return "Disconnected";
+            if (c.StartsWith("TCP")) return "TCP";
+            if (c.StartsWith("Browser")) return "Browser Print";
+            if (c.StartsWith("Spooler")) return "Spooler";
+            if (c.StartsWith("USB")) return "USB";
+            return "Other";
+        }
+    }
 
     [RelayCommand]
     private async Task ConnectTcpAsync()
