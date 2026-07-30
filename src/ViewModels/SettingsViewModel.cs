@@ -13,6 +13,7 @@ public partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty] private string tcpHost = "";
     [ObservableProperty] private int tcpPort = 9100;
+    [ObservableProperty] private string browserPrintEndpoint = "http://127.0.0.1:888/postek/print";
     [ObservableProperty] private string? authToken = "";
     [ObservableProperty] private string cloudUrl = "https://dunhill-inventory-service.vercel.app";
     [ObservableProperty] private string status = "Disconnected";
@@ -100,13 +101,13 @@ public partial class SettingsViewModel : ObservableObject
     };
 
     [RelayCommand]
-    private async Task ConnectTcpAsync()
+    private bool ConnectTcp()
     {
         if (string.IsNullOrWhiteSpace(TcpHost))
         {
             LastError = "Enter a hostname or IP for the printer.";
             Status = "Need host";
-            return;
+            return false;
         }
         var ok = _print.ConnectTcp(TcpHost, TcpPort);
         if (ok)
@@ -123,7 +124,39 @@ public partial class SettingsViewModel : ObservableObject
             LastError = _print.LastError;
             Status = "Connection failed";
         }
-        await Task.CompletedTask;
+        return ok;
+    }
+
+    [RelayCommand]
+    private bool ConnectBrowserPrint()
+    {
+        var url = string.IsNullOrWhiteSpace(BrowserPrintEndpoint)
+            ? "http://127.0.0.1:888/postek/print"
+            : BrowserPrintEndpoint.Trim();
+        var ok = _print.ConnectBrowserPrint(url);
+        if (ok)
+        {
+            IsConnected = true;
+            PrinterModel = _print.Status.Model;
+            ConnectionDetail = _print.Status.ConnectionType;
+            Status = $"Connected: {PrinterModel}";
+            LastError = null;
+        }
+        else
+        {
+            IsConnected = false;
+            LastError = _print.LastError;
+            Status = "Browser Print connection failed";
+        }
+        return ok;
+    }
+
+    [RelayCommand]
+    private async Task TestBrowserPrintAsync()
+    {
+        if (_print is null) return;
+        var ok = await _print.BrowserPrintProbeAsync();
+        Status = ok ? "Browser Print probe OK" : $"Browser Print probe failed: {_print.LastError}";
     }
 
     [RelayCommand]

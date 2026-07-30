@@ -5,22 +5,26 @@ using Dunhill.PrintStudio.Usb;
 namespace Dunhill.PrintStudio.Services;
 
 /// <summary>
-/// Owns the active printer connection (TCP, WinUSB, or Windows print
-/// spooler) and exposes a single <see cref="PrintAsync"/> entry point. UI
-/// calls this; UI never touches the transport directly.
+/// Owns the active printer connection and exposes a single
+/// <see cref="PrintAsync"/> entry point. UI calls this; UI never touches
+/// the transport directly.
 ///
-/// Three transports, three modes:
-///   - <b>Spooler</b> (recommended for USB-attached Postek ZR300I): the
-///     Seagull/Postek driver ships as a Windows print queue. Our app opens
-///     a printer handle, sends raw PPLZ bytes through <c>WritePrinter</c>
-///     with the RAW pass-through data type, and Windows spooler + the
-///     vendor driver convert that to USB bulk on the printer side. Same
-///     mechanism BarTender itself uses. No Zadig, no driver swap.
+/// Four transports:
+///   - <b>Spooler</b>: the Seagull/Postek driver ships as a Windows print
+///     queue. Our app opens a printer handle, sends raw PPLZ bytes
+///     through <c>WritePrinter</c> with the RAW pass-through data type,
+///     and Windows spooler + the vendor driver convert that to USB bulk
+///     on the printer side. Same mechanism BarTender itself uses.
 ///   - <b>TCP :9100</b>: when the printer is on Ethernet. Bidirectional
 ///     read-back gives the EPC encode-result feedback (void-and-retry).
-///   - <b>WinUSB</b>: experimental / OEM path. If the operator's vendor
-///     driver is replaced with WinUSB, raw bulk writes go straight to the
+///   - <b>WinUSB</b>: experimental. If the operator's vendor driver is
+///     replaced with WinUSB, raw bulk writes go straight to the
 ///     endpoints. Limited coverage on a ZR300I — try spooler first.
+///   - <b>Browser Print</b>: Postek's local HTTP bridge running on the
+///     operator's PC. POSTs to <c>http://127.0.0.1:888/postek/print</c>
+///     with a JSON-stringified printparams array. Works for cases where
+///     the cloud cannot reach the operator's PC directly (it just needs
+///     the operator-side bridge to forward the request).
 /// </summary>
 public sealed class PrintService : IDisposable
 {
@@ -28,6 +32,7 @@ public sealed class PrintService : IDisposable
     private PostekTcpTransport? _tcp;
     private PostekUsbTransport? _usb;
     private PostekSpoolerTransport? _spooler;
+    private PostekBrowserPrintTransport? _browserPrint;
 
     public PrinterStatus Status { get; private set; } = new(
         false, null, null, "Not connected", DateTime.UtcNow);
@@ -138,11 +143,58 @@ public sealed class PrintService : IDisposable
         _tcp?.Dispose();
         _usb?.Dispose();
         _spooler?.Dispose();
+        _browserPrint?.Dispose();
         _tcp = null;
         _usb = null;
         _spooler = null;
+        _browserPrint = null;
         Status = Status with { Online = false, ConnectionType = null };
         RaiseStatus();
+    }
+
+    /// <summary>
+    /// Connect to Postek Browser Print Server on the operator's PC.
+    /// Default endpoint is <c>http://127.0.0.1:888/postek/print</c>. The
+    /// server is the local HTTP bridge Postek ships in their SDK.
+    /// </summary>
+    public bool ConnectBrowserPrint(string endpointUrl = PostekBrowserPrintTransport.DefaultEndpoint)
+    {
+        lock (_lock)
+        {
+            Disconnect();
+            _browserPrint = new PostekBrowserPrintTransport { Endpoint = endpointUrl };
+            if (!_browserPrint.Open())
+            {
+                LastError = _browserPrint.LastError;
+                Status = Status with { Online = false, LastError = LastError };
+                _browserPrint.Dispose();
+                _browserPrint = null;
+                RaiseStatus();
+                return false;
+            }
+            Status = new PrinterStatus(
+                Online: true,
+                Model: "ZR300I (Browser Print)",
+                ConnectionType: $"Browser Print {endpointUrl}",
+                LastError: null,
+                LastChecked: DateTime.UtcNow);
+            RaiseStatus();
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// Confirm Browser Print Server is reachable by sending a list-printers
+    /// probe (reqParam="0"). Returns true on any HTTP response with
+    /// parseable JSON. Used by the Settings → Test connection button.
+    /// </summary>
+    public async Task<bool> BrowserPrintProbeAsync(CancellationToken ct = default)
+    {
+        if (_browserPrint is null || !_browserPrint.IsConnected) return false;
+        // reqParam=0 returns the printer list. The actual response shape
+        // across Postek Browser Print Server versions varies; we accept
+        // any parseable JSON.
+        return await _browserPrint.SendAsync("0", "[]", ct).ConfigureAwait(false);
     }
 
     public async Task<bool> PrintAsync(LabelSpec spec, LabelDimensions dims, CancellationToken ct = default)
@@ -175,7 +227,11 @@ public sealed class PrintService : IDisposable
     {
         // Snapshot active transports under the lock, then await OUTSIDE it.
         PostekTcpTransport? tcp; PostekUsbTransport? usb; PostekSpoolerTransport? spooler;
-        lock (_lock) { tcp = _tcp; usb = _usb; spooler = _spooler; }
+        PostekBrowserPrintTransport? browserPrint;
+        lock (_lock)
+        {
+            tcp = _tcp; usb = _usb; spooler = _spooler; browserPrint = _browserPrint;
+        }
 
         try
         {
@@ -185,6 +241,17 @@ public sealed class PrintService : IDisposable
                 return await spooler.SendAsync(pplz, ct).ConfigureAwait(false);
             if (usb is not null && usb.IsConnected)
                 return await usb.SendAsync(pplz, ct).ConfigureAwait(false);
+            // Browser Print model is HTTP+JSON, not raw PPLZ bytes; the higher-level
+            // PrintAsync() builds printparams and dispatches through this path. For
+            // callers that only give us a PPLZ string, we wrap it as a single
+            // PTK_DrawText_TrueType-style probe — but in practice Browser Print
+            // callers should use the LabelSpec path.
+            if (browserPrint is not null && browserPrint.IsConnected)
+            {
+                var wrapped = PostekBrowserPrintTransport.BuildLabelJob(
+                    pplz ?? "(empty)", 800, 600, 24, epcHex: "");
+                return await browserPrint.SendAsync("1", wrapped, ct).ConfigureAwait(false);
+            }
         }
         catch (ObjectDisposedException)
         {
@@ -194,6 +261,30 @@ public sealed class PrintService : IDisposable
 
         LastError = "Printer not connected. Click Connect in Settings.";
         return false;
+    }
+
+    /// <summary>
+    /// High-level print path that carries a LabelSpec and RFID EPC.
+    /// Routed through Browser Print if that's the active transport
+    /// (PPLZ builders + EPC encoding happen here, since Browser Print
+    /// expects <c>{PTK_*}</c> calls, not raw PPLZ bytes).
+    /// </summary>
+    public async Task<bool> PrintLabelJobAsync(LabelSpec spec, LabelDimensions dims, string? epcHex, CancellationToken ct = default)
+    {
+        PostekBrowserPrintTransport? bp;
+        lock (_lock) { bp = _browserPrint; }
+        if (bp is not null && bp.IsConnected)
+        {
+            var pp = PostekBrowserPrintTransport.BuildLabelJob(
+                printText: spec.Sku + (string.IsNullOrEmpty(spec.Name) ? "" : "  " + spec.Name),
+                labelWidthDots: dims.WidthDots,
+                labelHeightDots: dims.HeightDots,
+                labelGapDots: Math.Max(0, dims.HeightDots / 25),
+                epcHex: epcHex ?? "");
+            return await bp.SendAsync("1", pp, ct).ConfigureAwait(false);
+        }
+        // Fall through to plain PPLZ-byte path for the other transports.
+        return await PrintAsync(spec, dims, ct);
     }
 
     public void Dispose() => Disconnect();

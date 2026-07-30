@@ -53,6 +53,23 @@
                         </ListBox.ItemTemplate>
                     </ListBox>
 
+                    <TextBlock Text="Browser Print Server (Postek local HTTP bridge)" Style="{StaticResource FieldLabel}" Margin="0,24,0,4"/>
+                    <TextBlock FontSize="11" Foreground="#6B7280" TextWrapping="Wrap" Margin="0,2,0,8"
+                               Text="Postek's official HTTP bridge runs on the operator's PC at 127.0.0.1:888. Same wire shape as the demo HTML. Works for cloud → operator's-PC scenarios."/>
+
+                    <TextBlock Text="Endpoint URL" Style="{StaticResource FieldLabel}" Margin="0,4,0,4"/>
+                    <DockPanel LastChildFill="True">
+                        <TextBox Text="{Binding BrowserPrintEndpoint, UpdateSourceTrigger=PropertyChanged}"
+                                 Padding="8,6"/>
+                    </DockPanel>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                        <Button Content="Connect Browser Print" Style="{StaticResource PrimaryButton}"
+                                Command="{Binding ConnectBrowserPrintCommand}"/>
+                        <Button Content="Probe" Margin="10,0,0,0" Padding="16,10"
+                                Command="{Binding TestBrowserPrintAsyncCommand}"/>
+                    </StackPanel>
+
                     <TextBlock Text="Network printer (TCP :9100)" Style="{StaticResource FieldLabel}" Margin="0,24,0,4"/>
 
                     <TextBlock Text="Host or IP" Style="{StaticResource FieldLabel}" Margin="0,12,0,4"/>
