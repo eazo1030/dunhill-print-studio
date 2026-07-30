@@ -101,13 +101,13 @@ public partial class SettingsViewModel : ObservableObject
     };
 
     [RelayCommand]
-    private bool ConnectTcp()
+    private async Task ConnectTcpAsync()
     {
         if (string.IsNullOrWhiteSpace(TcpHost))
         {
             LastError = "Enter a hostname or IP for the printer.";
             Status = "Need host";
-            return false;
+            return;
         }
         var ok = _print.ConnectTcp(TcpHost, TcpPort);
         if (ok)
@@ -124,11 +124,11 @@ public partial class SettingsViewModel : ObservableObject
             LastError = _print.LastError;
             Status = "Connection failed";
         }
-        return ok;
+        await Task.CompletedTask;
     }
 
     [RelayCommand]
-    private bool ConnectBrowserPrint()
+    private async Task ConnectBrowserPrintAsync()
     {
         var url = string.IsNullOrWhiteSpace(BrowserPrintEndpoint)
             ? "http://127.0.0.1:888/postek/print"
@@ -148,15 +148,15 @@ public partial class SettingsViewModel : ObservableObject
             LastError = _print.LastError;
             Status = "Browser Print connection failed";
         }
-        return ok;
+        await Task.CompletedTask;
     }
 
     [RelayCommand]
-    private async Task TestBrowserPrintAsync()
+    private async Task TestBrowserPrint()
     {
-        if (_print is null) return;
         var ok = await _print.BrowserPrintProbeAsync();
         Status = ok ? "Browser Print probe OK" : $"Browser Print probe failed: {_print.LastError}";
+        await Task.CompletedTask;
     }
 
     [RelayCommand]

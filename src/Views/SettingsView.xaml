@@ -67,7 +67,7 @@
                         <Button Content="Connect Browser Print" Style="{StaticResource PrimaryButton}"
                                 Command="{Binding ConnectBrowserPrintCommand}"/>
                         <Button Content="Probe" Margin="10,0,0,0" Padding="16,10"
-                                Command="{Binding TestBrowserPrintAsyncCommand}"/>
+                                Command="{Binding TestBrowserPrintCommand}"/>
                     </StackPanel>
 
                     <TextBlock Text="Network printer (TCP :9100)" Style="{StaticResource FieldLabel}" Margin="0,24,0,4"/>
