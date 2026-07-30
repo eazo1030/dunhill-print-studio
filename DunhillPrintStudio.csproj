@@ -74,9 +74,13 @@
     </ApplicationDefinition>
   </ItemGroup>
 
-  <ItemGroup>
-    <Compile Include="src\Program.cs" />
-  </ItemGroup>
+  <!--
+    Program.cs is auto-included by the .NET SDK's default Compile globbing
+    (every *.cs under the project directory). DO NOT add an explicit
+    <Compile Include="src\Program.cs" /> here — that triggers MSB3105
+    "Duplicate 'Compile' items were included." error from the SDK's
+    default item rules. Only needed if EnableDefaultCompileItems=false.
+  -->
 
   <!--
     EnableDefaultApplicationDefinition=false disables WPF's automatic XAML
