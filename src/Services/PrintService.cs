@@ -325,7 +325,7 @@ public sealed class PrintService : IDisposable
         // they care about it (e.g. via a UHF reader plugged elsewhere).
         var fallbackSpec = new LabelSpec(
             Sku: "", Name: "", Qty: 1, Serial: null,
-            QrPayload: null, EncodeRfid: false, Epc: Epc,
+            QrPayload: null, EncodeRfid: !string.IsNullOrEmpty(epc), Epc: string.IsNullOrEmpty(epc) ? null : epc,
             Darkness: 8, PrintSpeed: 4);
         var pplz = PplzBuilder.BuildItemLabel(spec ?? fallbackSpec, dims);
         var sent = await SendRawAsync(pplz, ct).ConfigureAwait(false);
