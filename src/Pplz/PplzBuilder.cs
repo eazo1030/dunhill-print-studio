@@ -1,3 +1,6 @@
+using System.Text;
+using Dunhill.PrintStudio.Models;
+
 namespace Dunhill.PrintStudio.Pplz;
 
 /// <summary>
@@ -125,6 +128,141 @@ public static class PplzBuilder
     /// Use ~HS to query host status (print head, ribbon, paper).
     /// </summary>
     public static string BuildStatusRequest() => "~HS";
+
+    /// <summary>
+    /// Render a saved <see cref="LabelTemplate"/> into a PPLZ label for a given
+    /// <see cref="LabelSpec"/>. Each template element becomes the matching PPLZ
+    /// command sequence (text ^A0N+^FD, barcode ^BC, QR ^BQ, line/box ^GB,
+    /// RFID ^RFW). Field-bound elements pull their value from <paramref name="spec"/>.
+    /// </summary>
+    public static string BuildFromTemplate(LabelTemplate template, LabelSpec spec)
+    {
+        var sb = new StringBuilder(1024);
+
+        // ^XA — start of label
+        sb.Append("^XA");
+        sb.Append("^CI28");                     // UTF-8 encoding for international text
+        sb.Append("^PW").Append(template.WidthDots);
+        sb.Append("^LL").Append(template.HeightDots);
+        sb.Append("^LH0,0");
+        sb.Append("^MD").Append(template.Darkness);
+        sb.Append("^PR").Append(template.PrintSpeed);
+
+        foreach (var el in template.Elements)
+        {
+            switch (el.Type)
+            {
+                case "text":
+                    AppendText(sb, el, ResolveValue(el, spec));
+                    break;
+                case "barcode":
+                    AppendBarcode(sb, el, ResolveValue(el, spec));
+                    break;
+                case "qrcode":
+                    AppendQrCode(sb, el, ResolveValue(el, spec));
+                    break;
+                case "rfid":
+                    AppendRfid(sb, el, spec);
+                    break;
+                case "line":
+                    AppendLine(sb, el);
+                    break;
+                case "box":
+                    AppendBox(sb, el);
+                    break;
+            }
+        }
+
+        sb.Append("^XZ");
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Resolve the rendered string for a text/barcode/QR element. Honors the
+    /// <see cref="LabelElement.Field"/> binding first (pulls from
+    /// <see cref="LabelSpec"/>), then falls back to <see cref="LabelElement.Content"/>.
+    /// </summary>
+    private static string ResolveValue(LabelElement el, LabelSpec spec)
+    {
+        string raw = el.Field switch
+        {
+            "Sku"      => spec.Sku,
+            "Name"     => spec.Name,
+            "Serial"   => spec.Serial ?? "",
+            "Epc"      => spec.Epc ?? "",
+            "Qty"      => spec.Qty.ToString(),
+            "QrPayload"=> spec.QrPayload ?? "",
+            null or "" => el.Content ?? "",
+            _          => el.Content ?? el.Field,   // unknown field → render literal
+        };
+        if (string.IsNullOrEmpty(el.Prefix)) return raw;
+        return el.Prefix + raw;
+    }
+
+    private static void AppendText(StringBuilder sb, LabelElement el, string value)
+    {
+        if (string.IsNullOrEmpty(value)) return;
+        sb.Append("^FO").Append(el.X).Append(',').Append(el.Y);
+        sb.Append("^A").Append(el.Font).Append('N')
+          .Append(',').Append(el.FontHeight).Append(',').Append(el.FontWidth);
+        sb.Append("^FD").Append(Escape(value)).Append("^FS");
+    }
+
+    private static void AppendBarcode(StringBuilder sb, LabelElement el, string value)
+    {
+        if (string.IsNullOrEmpty(value)) return;
+        sb.Append("^FO").Append(el.X).Append(',').Append(el.Y);
+        sb.Append("^BY3,2,").Append(el.BarcodeHeight);   // narrow-wide ratio + bar height
+        var symb = el.BarcodeType.ToUpperInvariant() switch
+        {
+            "CODE39" => "B3N",
+            "EAN13"  => "BEN",
+            "UPCA"   => "BAN",
+            _        => "BCN",                              // Code 128 default
+        };
+        // ^BC<dir>,<height>,<print-interpret-line>,<UCC-check>,<mode>
+        sb.Append('^').Append(symb).Append('N')
+          .Append(',').Append(el.BarcodeHeight)
+          .Append(",Y,N,N");
+        sb.Append("^FD").Append(Escape(value)).Append("^FS");
+    }
+
+    private static void AppendQrCode(StringBuilder sb, LabelElement el, string value)
+    {
+        if (string.IsNullOrEmpty(value)) return;
+        sb.Append("^FO").Append(el.X).Append(',').Append(el.Y);
+        sb.Append("^BQN,2,").Append(el.QrMagnification);   // model 2, mag = ...
+        sb.Append("^FDLA,").Append(Escape(value)).Append("^FS");
+    }
+
+    private static void AppendLine(StringBuilder sb, LabelElement el)
+    {
+        // ^GB<width>,<height>,<thickness>,<color>  — height=1, thickness=N → horizontal line
+        sb.Append("^FO").Append(el.X).Append(',').Append(el.Y);
+        sb.Append("^GB").Append(el.Width).Append(",1,").Append(el.Thickness).Append(",B^FS");
+    }
+
+    private static void AppendBox(StringBuilder sb, LabelElement el)
+    {
+        sb.Append("^FO").Append(el.X).Append(',').Append(el.Y);
+        sb.Append("^GB").Append(el.Width).Append(',').Append(el.Height)
+          .Append(',').Append(el.Thickness).Append(",B^FS");
+    }
+
+    private static void AppendRfid(StringBuilder sb, LabelElement el, LabelSpec spec)
+    {
+        // Only emits the encode command if the spec actually has an EPC. The
+        // user can have an RFID element in the template but skip encoding for
+        // a particular print job (e.g. a re-print of an already-encoded label).
+        if (string.IsNullOrEmpty(spec.Epc)) return;
+        // ^RFW,<frequency>,<lock>,<words>,<format>
+        //   frequency = U (UHF Gen2)
+        //   lock      = 2 (lock none — leave tag unlocked for further writes)
+        //   words     = number of 16-bit words to write
+        //   format    = E (EPC bank) / H (handle) / etc.
+        sb.Append("^RFW,U,2,").Append(el.RfidWords).Append(',').Append(el.RfidBank[0]).Append(CRLF);
+        sb.Append("^FD").Append(Escape(spec.Epc)).Append("^FS");
+    }
 
     /// <summary>
     /// Escape PPLZ special characters in field data:

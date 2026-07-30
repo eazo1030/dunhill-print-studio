@@ -30,7 +30,8 @@
                                Text="The Postek Seagull driver creates a Windows print queue when installed. BarTender talks to the printer through that queue. Same path here."/>
 
                     <DockPanel LastChildFill="False">
-                        <Button DockPanel.Dock="Left" Content="Refresh" Padding="12,6"
+                        <Button DockPanel.Dock="Left" Content="Refresh"
+                                Style="{StaticResource SecondaryButton}"
                                 Command="{Binding RefreshSpoolerCommand}"/>
                         <Button DockPanel.Dock="Right" Content="Connect" Padding="12,6" Margin="8,0,0,0"
                                 Command="{Binding ConnectSpoolerCommand}"/>

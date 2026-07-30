@@ -14,63 +14,65 @@
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
 
-        <!-- LEFT: form -->
+        <!-- LEFT: Form -->
         <Border Padding="20" Margin="0,0,8,0" CornerRadius="8" Background="#FAFAFA">
             <StackPanel>
                 <TextBlock Text="Print Label" Style="{StaticResource PanelHeader}"/>
+                <TextBlock Text="Fill in the fields and hit Print. Live PPLZ preview updates on the right."
+                           FontSize="12" Foreground="#6B7280" Margin="0,0,0,12"/>
 
-                <TextBlock Text="SKU" Style="{StaticResource FieldLabel}"/>
-                <TextBox Text="{Binding Sku, UpdateSourceTrigger=PropertyChanged}" Padding="8,6"/>
+                <TextBlock Text="SKU" Style="{StaticResource FieldLabel}" Margin="0,0,0,4"/>
+                <TextBox Text="{Binding Sku, UpdateSourceTrigger=PropertyChanged}"/>
 
-                <TextBlock Text="Item name" Style="{StaticResource FieldLabel}"/>
-                <TextBox Text="{Binding ItemName, UpdateSourceTrigger=PropertyChanged}" Padding="8,6"/>
+                <TextBlock Text="Item name" Style="{StaticResource FieldLabel}" Margin="0,12,0,4"/>
+                <TextBox Text="{Binding ItemName, UpdateSourceTrigger=PropertyChanged}"/>
 
-                <Grid Margin="0,12,0,0">
+                <Grid Margin="0,4,0,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="12"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0">
-                        <TextBlock Text="Quantity" Style="{StaticResource FieldLabel}"/>
-                        <TextBox Text="{Binding Quantity, UpdateSourceTrigger=PropertyChanged}" Padding="8,6"/>
+                        <TextBlock Text="Quantity" Style="{StaticResource FieldLabel}" Margin="0,12,0,4"/>
+                        <TextBox Text="{Binding Quantity, UpdateSourceTrigger=PropertyChanged}"/>
                     </StackPanel>
                     <StackPanel Grid.Column="2">
-                        <TextBlock Text="Serial (optional)" Style="{StaticResource FieldLabel}"/>
-                        <TextBox Text="{Binding Serial, UpdateSourceTrigger=PropertyChanged}" Padding="8,6"/>
+                        <TextBlock Text="Serial (optional)" Style="{StaticResource FieldLabel}" Margin="0,12,0,4"/>
+                        <TextBox Text="{Binding Serial, UpdateSourceTrigger=PropertyChanged}"/>
                     </StackPanel>
                 </Grid>
 
-                <TextBlock Text="EPC (RFID, auto-generated if blank)" Style="{StaticResource FieldLabel}"/>
+                <TextBlock Text="EPC (RFID, auto-generated if blank)" Style="{StaticResource FieldLabel}" Margin="0,4,0,4"/>
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <TextBox Grid.Column="0" Text="{Binding Epc, UpdateSourceTrigger=PropertyChanged}" Padding="8,6"/>
+                    <TextBox Grid.Column="0" Text="{Binding Epc, UpdateSourceTrigger=PropertyChanged}"/>
                     <CheckBox Grid.Column="1" Content="Encode RFID" IsChecked="{Binding EncodeRfid}"
-                              VerticalAlignment="Center" Margin="10,0,0,0"/>
+                              VerticalAlignment="Center" Margin="12,0,0,0" FontSize="13"/>
                 </Grid>
 
                 <StackPanel Orientation="Horizontal" Margin="0,20,0,0">
                     <Button Content="Print Label" Style="{StaticResource PrimaryButton}"
                             Command="{Binding PrintCommand}" IsEnabled="{Binding IsBusy, Converter={StaticResource Invert}}"/>
-                    <Button Content="Clear" Margin="10,0,0,0" Padding="16,10"
+                    <Button Content="Clear" Style="{StaticResource SecondaryButton}" Margin="10,0,0,0"
                             Command="{Binding ClearFormCommand}"/>
                 </StackPanel>
 
-                <Border Background="#F3F4F6" Padding="12" Margin="0,20,0,0" CornerRadius="6">
+                <Border Background="#F3F4F6" Padding="14" Margin="0,20,0,0" CornerRadius="8">
                     <StackPanel>
-                        <TextBlock Text="{Binding Status}" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding Status}" FontWeight="SemiBold" FontSize="13"/>
                         <TextBlock Text="{Binding LastError}" Foreground="#DC2626"
-                                   TextWrapping="Wrap" Margin="0,4,0,0"
+                                   TextWrapping="Wrap" Margin="0,6,0,0" FontSize="12"
                                    Visibility="{Binding LastError, Converter={StaticResource StringToVisibility}}"/>
                     </StackPanel>
                 </Border>
             </StackPanel>
         </Border>
 
-        <!-- RIGHT: preview + recent -->
+        <!-- RIGHT: Preview + recent jobs -->
         <Border Grid.Column="1" Padding="20" Margin="8,0,0,0" CornerRadius="8" Background="#FAFAFA">
             <Grid>
                 <Grid.RowDefinitions>
@@ -81,23 +83,25 @@
 
                 <TextBlock Grid.Row="0" Text="Live PPLZ Preview" Style="{StaticResource PanelHeader}"/>
 
-                <Border Grid.Row="1" Background="White" BorderBrush="#D1D5DB" BorderThickness="1"
-                        Padding="12" CornerRadius="4">
-                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <Border Grid.Row="1" Background="#0F172A" BorderThickness="0"
+                        Padding="14" CornerRadius="8">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
                         <TextBox Text="{Binding LabelPreview, Mode=OneWay}" IsReadOnly="True"
                                  FontFamily="Consolas,Courier New" FontSize="11"
-                                 Background="Transparent" BorderThickness="0"
+                                 Background="Transparent" Foreground="#A7F3D0"
+                                 BorderThickness="0" CaretBrush="#A7F3D0"
                                  TextWrapping="NoWrap" AcceptsReturn="True"/>
                     </ScrollViewer>
                 </Border>
 
                 <StackPanel Grid.Row="2" Margin="0,16,0,0">
-                    <TextBlock Text="Recent prints" FontSize="13" Foreground="#4B5563" Margin="0,0,0,6"/>
+                    <TextBlock Text="Recent prints" FontWeight="SemiBold" FontSize="13"
+                               Foreground="#374151" Margin="0,0,0,8"/>
                     <ItemsControl ItemsSource="{Binding RecentJobs}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
                                 <TextBlock Text="{Binding}" FontFamily="Consolas" FontSize="12"
-                                           Foreground="#374151"/>
+                                           Foreground="#374151" Margin="0,2,0,2"/>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>

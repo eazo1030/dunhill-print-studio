@@ -59,6 +59,7 @@ public partial class App : Application
                     services.AddTransient<QueueView>();
                     services.AddTransient<HistoryView>();
                     services.AddTransient<InventoryView>();
+                    services.AddTransient<DesignerView>();
 
                     Log("ConfigureServices: HttpClient + Sync");
                     services.AddHttpClient("dunhill");
@@ -67,6 +68,10 @@ public partial class App : Application
 
                     Log("ConfigureServices: UpdateService");
                     services.AddSingleton<UpdateService>();
+
+                    Log("ConfigureServices: TemplateStore + Designer");
+                    services.AddSingleton<TemplateStore>();
+                    services.AddTransient<DesignerViewModel>();
 
                     Log("ConfigureServices: MainWindow");
                     services.AddSingleton<MainWindow>();

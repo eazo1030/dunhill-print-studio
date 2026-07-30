@@ -6,10 +6,21 @@
 
     <Application.Resources>
         <ResourceDictionary>
-            <local:InvertBoolConverter x:Key="Invert"/>
-            <local:StringToVisibilityConverter x:Key="StringToVisibility"/>
 
-            <!-- Shared styles -->
+            <!-- ===== Converters ===== -->
+            <local:InvertBoolConverter          x:Key="Invert"/>
+            <local:StringToVisibilityConverter x:Key="StringToVisibility"/>
+            <local:NullToVisibilityConverter   x:Key="NullToVisibility"/>
+            <local:StringEqualsConverter       x:Key="TextTypeVisibility"/>
+            <local:StringEqualsConverter       x:Key="BarcodeTypeVisibility"/>
+            <local:StringEqualsConverter       x:Key="QrTypeVisibility"/>
+            <local:StringEqualsConverter       x:Key="RfidTypeVisibility"/>
+            <local:StringEqualsConverter       x:Key="LineTypeVisibility"/>
+            <local:StringEqualsConverter       x:Key="BoxTypeVisibility"/>
+            <local:DotToFontSizeConverter      x:Key="DotToFontSize"/>
+            <local:BarcodeWidthConverter       x:Key="BarcodeWidth"/>
+
+            <!-- ===== Shared styles ===== -->
             <Style x:Key="PanelHeader" TargetType="TextBlock">
                 <Setter Property="FontSize" Value="20"/>
                 <Setter Property="FontWeight" Value="SemiBold"/>
@@ -50,6 +61,89 @@
                     </Trigger>
                 </Style.Triggers>
             </Style>
+
+            <!-- ===== Reusable button (secondary) ===== -->
+            <Style x:Key="SecondaryButton" TargetType="Button">
+                <Setter Property="Background" Value="White"/>
+                <Setter Property="Foreground" Value="#1F2937"/>
+                <Setter Property="FontWeight" Value="Normal"/>
+                <Setter Property="Padding" Value="14,8"/>
+                <Setter Property="BorderBrush" Value="#D1D5DB"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+                <Style.Triggers>
+                    <Trigger Property="IsMouseOver" Value="True">
+                        <Setter Property="Background" Value="#F9FAFB"/>
+                        <Setter Property="BorderBrush" Value="#9CA3AF"/>
+                    </Trigger>
+                    <Trigger Property="IsEnabled" Value="False">
+                        <Setter Property="Opacity" Value="0.5"/>
+                        <Setter Property="Cursor" Value="Arrow"/>
+                    </Trigger>
+                </Style.Triggers>
+            </Style>
+
+            <!-- ===== Inputs ===== -->
+            <Style TargetType="TextBox">
+                <Setter Property="Padding" Value="8,6"/>
+                <Setter Property="BorderBrush" Value="#D1D5DB"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="Background" Value="White"/>
+                <Setter Property="FontSize" Value="13"/>
+            </Style>
+
+            <Style TargetType="ComboBox">
+                <Setter Property="Padding" Value="8,4"/>
+                <Setter Property="FontSize" Value="13"/>
+            </Style>
+
+            <!-- ===== Tab control polish ===== -->
+            <Style TargetType="TabItem">
+                <Setter Property="FontSize" Value="13"/>
+                <Setter Property="FontWeight" Value="Normal"/>
+                <Setter Property="Padding" Value="14,8"/>
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="Foreground" Value="#6B7280"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="TabItem">
+                            <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                    BorderThickness="0,0,0,2" BorderBrush="Transparent"
+                                    Padding="{TemplateBinding Padding}">
+                                <ContentPresenter ContentSource="Header"
+                                                  HorizontalAlignment="Center"
+                                                  VerticalAlignment="Center"
+                                                  TextBlock.FontWeight="{TemplateBinding FontWeight}"
+                                                  TextBlock.Foreground="{TemplateBinding Foreground}"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Foreground" Value="#1F2937"/>
+                                </Trigger>
+                                <Trigger Property="IsSelected" Value="True">
+                                    <Setter Property="Foreground" Value="#1E40AF"/>
+                                    <Setter Property="FontWeight" Value="SemiBold"/>
+                                    <Setter TargetName="Bd" Property="BorderBrush" Value="#1E40AF"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
         </ResourceDictionary>
     </Application.Resources>
 </Application>
