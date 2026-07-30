@@ -49,18 +49,29 @@ public sealed class DesignerCanvasBehavior
         if (d is not FrameworkElement host) return;
         if ((bool)e.NewValue)
         {
-            host.PreviewMouseLeftButtonDown += OnMouseDown;
-            host.PreviewMouseMove            += OnMouseMove;
-            host.PreviewMouseLeftButtonUp    += OnMouseUp;
-            host.PreviewKeyDown              += OnKeyDown;
+            // Use the BUBBLING MouseLeftButtonDown (not the tunneling Preview
+            // variant). ItemsControl-generated ContentPresenters can set
+            // e.Handled=true on Preview events during their own internal
+            // click handling, which would silently kill our handler. Bubbling
+            // events fire AFTER the child finishes its work, and we explicitly
+            // mark them Handled here to prevent any further bubbling.
+            host.MouseLeftButtonDown    += OnMouseDown;
+            host.MouseMove                += OnMouseMove;
+            host.MouseLeftButtonUp        += OnMouseUp;
+            host.PreviewKeyDown           += OnKeyDown;
+            // Suppress WPF's built-in DragDrop on this region entirely — the
+            // red "+" no-drop cursor you saw was WPF thinking the click was
+            // the start of a DragDrop because ItemsControl canvases default
+            // to AllowDrop=true. This single line is what fixes that.
+            host.AllowDrop = false;
             _host = host;
         }
         else
         {
-            host.PreviewMouseLeftButtonDown -= OnMouseDown;
-            host.PreviewMouseMove            -= OnMouseMove;
-            host.PreviewMouseLeftButtonUp    -= OnMouseUp;
-            host.PreviewKeyDown              -= OnKeyDown;
+            host.MouseLeftButtonDown    -= OnMouseDown;
+            host.MouseMove                -= OnMouseMove;
+            host.MouseLeftButtonUp        -= OnMouseUp;
+            host.PreviewKeyDown           -= OnKeyDown;
             _host = null;
         }
     }
@@ -87,7 +98,7 @@ public sealed class DesignerCanvasBehavior
         // Push ONE undo snapshot at drag start — every OnMouseMove below just
         // updates X/Y on this same element without re-pushing. On MouseUp we
         // notify the VM so it knows the drag finished and updates CanUndo.
-        DesignerViewModelBridge.PushSnapshot?.Invoke();
+        DesignerViewModelBridge.PushSnapshot();
 
         _dragElement = element;
         _dragStartCanvasPos = e.GetPosition(host);
@@ -100,6 +111,8 @@ public sealed class DesignerCanvasBehavior
 
         // Capture so MouseMove keeps firing even if cursor leaves the element
         host.CaptureMouse();
+        // Mark the event handled so the inner ItemsControl / Canvas doesn't
+        // also think the click was the start of a DragDrop or selection.
         e.Handled = true;
     }
 

@@ -119,6 +119,7 @@
                               Width="{Binding SelectedTemplate.WidthDots, FallbackValue=583}"
                               Height="{Binding SelectedTemplate.HeightDots, FallbackValue=160}"
                               Background="White"
+                              AllowDrop="False"
                               views:DesignerCanvasBehavior.IsEnabled="True">
                             <Canvas x:Name="GuideCanvas"
                                     Width="{Binding ActualWidth, ElementName=LabelCanvas}"
