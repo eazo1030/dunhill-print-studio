@@ -5,6 +5,7 @@ using CommunityToolkit.Mvvm.Input;
 using Dunhill.PrintStudio.Services;
 using Dunhill.PrintStudio.Usb;
 using Velopack;
+using Velopack.Exceptions;
 
 namespace Dunhill.PrintStudio.ViewModels;
 
