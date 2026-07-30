@@ -323,7 +323,11 @@ public sealed class PrintService : IDisposable
         // without the Browser Print Server, so they degrade to one-shot
         // print. Caller is responsible for downstream verification if
         // they care about it (e.g. via a UHF reader plugged elsewhere).
-        var pplz = PplzBuilder.BuildItemLabel(spec ?? new LabelSpec(string.Empty), dims);
+        var fallbackSpec = new LabelSpec(
+            Sku: "", Name: "", Qty: 1, Serial: null,
+            QrPayload: null, EncodeRfid: false, Epc: Epc,
+            Darkness: 8, PrintSpeed: 4);
+        var pplz = PplzBuilder.BuildItemLabel(spec ?? fallbackSpec, dims);
         var sent = await SendRawAsync(pplz, ct).ConfigureAwait(false);
         return new PrintJobOutcome(
             sent ? PrintJobStatus.Done : PrintJobStatus.Failed,
