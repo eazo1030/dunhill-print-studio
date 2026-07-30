@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using Dunhill.PrintStudio.Models;
+using Dunhill.PrintStudio.ViewModels;
 
 namespace Dunhill.PrintStudio.Views;
 
@@ -28,9 +29,9 @@ public sealed class DesignerCanvasBehavior
             typeof(RoutedEventHandler),
             typeof(DesignerCanvasBehavior));
 
-    public static void AddDragCompletedHandler(DependencyObject d, RoutedEventHandler h)
+    public static void AddDragCompletedHandler(UIElement d, RoutedEventHandler h)
         => d.AddHandler(DragCompletedEvent, h);
-    public static void RemoveDragCompletedHandler(DependencyObject d, RoutedEventHandler h)
+    public static void RemoveDragCompletedHandler(UIElement d, RoutedEventHandler h)
         => d.RemoveHandler(DragCompletedEvent, h);
 
     public static readonly DependencyProperty IsEnabledProperty =
@@ -86,7 +87,7 @@ public sealed class DesignerCanvasBehavior
         // Push ONE undo snapshot at drag start — every OnMouseMove below just
         // updates X/Y on this same element without re-pushing. On MouseUp we
         // notify the VM so it knows the drag finished and updates CanUndo.
-        DesignerViewModelBridge.PushSnapshot();
+        DesignerViewModelBridge.PushSnapshot?.Invoke();
 
         _dragElement = element;
         _dragStartCanvasPos = e.GetPosition(host);
