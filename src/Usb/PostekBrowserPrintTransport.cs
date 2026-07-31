@@ -228,62 +228,45 @@ public sealed class PostekBrowserPrintTransport : IDisposable
         //   Date:     y=140, h=20
         //   Bottom margin = 236 − (140+20) = 76 dots ~ 6 mm.
         //
-        // v1.2.20 — operator-required final layout.
+        // v1.2.21 — final layout. Operator's directives:
+        //   * Order top → bottom: Fabric, Yardage, PO, Date Printed.
+        //   * Fabric = BIGGEST writing on the label.
+        //   * Text should fill the label (not be tiny in upper-right).
         //
-        // v1.2.19 result (operator-confirmed from photo): text is in
-        // normal reading orientation (not mirrored), but render order
-        // on the label is BOTTOM-UP (Fabric at bottom, Date Printed at
-        // top). Y axis confirmed: smaller Y → TOP of inlay, larger Y
-        // → BOTTOM. (This contradicts the page-6 manual diagram that
-        // showed Y going UP, but the printer firmware behavior is what
-        // actually matters here.)
+        // Operator reports the v1.2.20 print showed the right elements in
+        // roughly the right places, but they were crammed into the top half
+        // of the inlay because the Y values were clustered. This version
+        // spreads the elements vertically to use the full 236-dot height
+        // AND makes Fabric noticeably the biggest.
         //
-        // Operator asks for top-down order with Fabric as the
-        // BIGGEST element:
-        //   1. Fabric:      (biggest, top)
-        //   2. Yardage:    (second biggest, middle)
-        //   3. PO:         (smaller, lower)
-        //   4. Date Printed (smallest, bottom)
+        // Layout (v1.2.21 — top-down, full-height):
+        //   Fabric:  y=4,   h=84, x=560 — biggest, top band
+        //             (h=84 ≈ 7 mm cap-height; font weight 700 bold)
+        //   Yardage: y=92,  h=72, x=480 — second biggest, mid band
+        //   PO:      y=170, h=32, x=320 — lower band
+        //   Date:    y=204, h=24, x=240 — bottom band
         //
-        // Layout (v1.2.20 layout constants — all confirmed by v1.2.19):
-        //   Fabric:  y=4,   h=72 — biggest, just below top edge (h=72
-        //           ≈ 6 mm cap height at 300 DPI; fills the top band)
-        //   Yardage: y=82,  h=64 — second biggest, mid band
-        //   PO:      y=152, h=28 — between Yardage and Date
-        //   Date:    y=186, h=22 — bottom band, small
-        //   Bottom margin = 236 − (186+22) = 28 dots ≈ 2.3 mm
+        // Vertical budget: 0 (top) → 228 (bottom).
+        //   Margin top:   4 dots
+        //   Gap Fabric→Yardage: 4 dots (y=88 → y=92)
+        //   Gap Yardage→PO:     6 dots (y=164 → y=170)
+        //   Gap PO→Date:        2 dots (y=202 → y=204)  ← tight, by design
+        //   Margin bottom:    8 dots (228 → 236)
         //
-        // X coordination: B-direction places glyph anchor at X with the
-        // glyph extending LEFTWARD. For "Fabric: French" at h=72, glyph
-        // width ≈ 480 dots — set X = 480 to land the right edge ~30 dots
-        // inside the right edge. For "Date Printed: 12/23/2026" at h=22
-        // (~180 dots wide), set X = 180.
-        //
-        // Better idea: compute X = (glyph_width_factor * fontHeight) and
-        // use that. Postek's PTK_DrawText_TrueType scales glyph width
-        // roughly proportional to fontHeight * char-count. Empirical:
-        //   ~0.6 * fontHeight per character for proportional Arial.
-        // Set X = 0.6 * fontHeight * (data length + 1 for safety) +
-        // right-margin.
-        //
-        // For simplicity here, just hardcode clean X values per line:
-        //   Fabric (h=72, ~14 chars): X=560  (1.6 mm ~ 40 dots from right)
-        //   Yardage (h=64, ~5 chars): X=420  (well inside, number is short)
-        //   PO (h=28, ~10 chars):      X=300
-        //   Date (h=22, ~24 chars):     X=240
+        // ZR300I = 300 DPI: 73 × 20 mm inlay = 862 × 236 dots.
 
         const int InlayWidthDots      = 862;
-        const int FabricY             = 4;     // top
-        const int FabricH             = 72;
+        const int FabricY             = 4;     // top of inlay
+        const int FabricH             = 84;    // BIGGEST
         const int FabricX             = 560;
-        const int YardY               = 82;    // mid
-        const int YardH               = 64;
-        const int YardX               = 420;
-        const int PoY                 = 152;
-        const int PoH                 = 28;
-        const int PoX                 = 300;
-        const int DateY               = 186;   // bottom
-        const int DateH               = 22;
+        const int YardY               = 92;    // below Fabric
+        const int YardH               = 72;    // second-biggest
+        const int YardX               = 480;
+        const int PoY                 = 170;   // below Yardage
+        const int PoH                 = 32;
+        const int PoX                 = 320;
+        const int DateY               = 204;   // bottom band
+        const int DateH               = 24;
         const int DateX               = 240;
 
         var calls = new List<(string name, object value)>
