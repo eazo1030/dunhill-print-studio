@@ -228,37 +228,48 @@ public sealed class PostekBrowserPrintTransport : IDisposable
         //   Date:     y=140, h=20
         //   Bottom margin = 236 − (140+20) = 76 dots ~ 6 mm.
         //
-        // v1.2.17 — Y-axis calibration after PTK_SetDirection("T") actually
-        // flipped the Y axis the OPPOSITE of my v1.2.16 assumption.
+        // v1.2.18 — abandon PTK_SetDirection entirely; use the default
+        // ("B") and lay out coordinates the way the T-origin was meant
+        // to model — bottom-left origin, Y goes up, but DON'T ask the
+        // printer to rotate the print job.
         //
-        // v1.2.16 result (operator-confirmed from photo): origin sits at
-        // BOTTOM-LEFT of the inlay, X grows RIGHT (good!), Y grows UP
-        // (inverted — Y=4 puts text at the very bottom of the inlay,
-        // not at the top). So my layout was upside-down: I sent Fabric
-        // at y=4 expecting "near the top" but it landed at "near the
-        // bottom" because Y is measured from the bottom.
+        // v1.2.17 analysis from operator photo:
+        //   The v1.2.16 label in the photo is mirrored + upside-down and
+        //   sitting at the right edge of the inlay. That means
+        //   PTK_SetDirection("T") BOTH flipped Y axis AND rotated the
+        //   entire job 180°. The combination sent my coordinates into
+        //   the printer-side rotation matrix, which mirrored my
+        //   content. The "right side" placement means the X axis got
+        //   inverted too: my X=0 was at the FAR RIGHT edge of the
+        //   inlay, not the left.
         //
-        // Fix: keep the v1.2.16 11-arg-no-id-name-and-(0,0)-at-bottom-left
-        // model, but send Y values so that:
-        //   - small Y → bottom of the inlay (where we want Date)
-        //   - large Y → top of the inlay (where we want Fabric)
+        // Strategy: revert to default ("B") direction and let the
+        // coordinate system behave normally — bottom-right origin,
+        // X grows LEFT, Y grows UP (the documented B behavior on page 6).
+        // Then flip MY coordinates to put content on the visible inlay.
+        // X = (max X) − my chosen X − (text width).
+        // Y = (max Y) − my Y.
         //
-        // Layout (origin (0,0) at bottom-left, Y grows up):
-        //   Date:      y=20,  h=20   → sits 0–40 dots above bottom
-        //   PO:        y=50,  h=24   → 50–74 dots above bottom
-        //   Yardage:   y=82,  h=64   → 82–146 dots above bottom (headline band)
-        //   Fabric:    y=156, h=36   → 156–192 dots above bottom (top band)
-        //   Top margin: 236 − (156+36) = 44 dots ~ 3.7 mm
+        // Layout (default B origin, Y grows up, X grows left):
+        //   Fabric:    x=720, y=180, h=36 (top, near right edge of inlay)
+        //   Yardage:   x=720, y=82,  h=64 (mid, the headline band)
+        //   PO:        x=720, y=50,  h=24
+        //   Date:      x=720, y=20,  h=20 (bottom)
+        //
+        // (X=720 chosen so that, after Postek's B-direction X-inversion,
+        //  the printed glyph lands ~25–50 dots inside the inlay's LEFT
+        //  edge; tune after seeing the v1.2.18 result.)
         //
         // ZR300I = 300 DPI: 73 × 20 mm inlay → 862 × 236 dots.
 
+        const int InlayWidthDots  = 862;
         const int DateY   = 20;   // bottom (small DatePrinted)
         const int DateH   = 20;
         const int PoY     = 50;
         const int PoH     = 24;
         const int YardY   = 82;    // headline band
         const int YardH   = 64;
-        const int FabricY = 156;   // top (Fabric name)
+        const int FabricY = 180;   // top
         const int FabricH = 36;
 
         var calls = new List<(string name, object value)>
@@ -271,10 +282,11 @@ public sealed class PostekBrowserPrintTransport : IDisposable
             // Set print parameters
             ("PTK_SetPrintSpeed",     "4"),
             ("PTK_SetDarkness",       "10"),
-            // ORIGIN — set to top-left so X grows right and Y grows down
-            // from the top-left of the inlay. THIS is the single biggest
-            // cause of every prior version printing in the bottom-left.
-            ("PTK_SetDirection",      "T"),
+            // ORIGIN — use the default ("B") so we don't rotate the
+            // print job. Layout assumes B-direction: origin at
+            // bottom-right of inlay, X grows LEFT, Y grows UP.
+            // (See v1.2.18 commit message for the full reasoning.)
+            ("PTK_SetDirection",      "B"),
             // Label dimensions (73 × 20 mm @ 300 DPI = 862 × 236 dots).
             ("PTK_SetLabelHeight",    $"{labelHeightDots},{labelGapDots},0,false"),
             ("PTK_SetLabelWidth",     $"{labelWidthDots}"),
@@ -289,24 +301,27 @@ public sealed class PostekBrowserPrintTransport : IDisposable
 
         // ----- Fabric name (top, dark) -----
         // 11 positional args, then data. NOTE: no id_name slot.
+        // X coordinate: in B-direction (default), X grows LEFT from
+        // the bottom-right corner. So (inlay_width - 130) means
+        // "land the glyph 130 dots inside the LEFT edge of the inlay".
         if (!string.IsNullOrEmpty(fabricName))
             calls.Add(("PTK_DrawText_TrueType",
-                $"0,{FabricY},{FabricH},0,Arial,1,400,0,0,0,Fabric: {EscapePtk(fabricName)}"));
+                $"{InlayWidthDots - 130},{FabricY},{FabricH},0,Arial,1,400,0,0,0,Fabric: {EscapePtk(fabricName)}"));
 
         // ----- Yardage (the headline) -----
         if (!string.IsNullOrEmpty(yardageText))
             calls.Add(("PTK_DrawText_TrueType",
-                $"0,{YardY},{YardH},0,Arial,1,700,0,0,0,{EscapePtk(yardageText)}"));
+                $"{InlayWidthDots - 130},{YardY},{YardH},0,Arial,1,700,0,0,0,{EscapePtk(yardageText)}"));
 
         // ----- PO -----
         if (!string.IsNullOrEmpty(poText))
             calls.Add(("PTK_DrawText_TrueType",
-                $"0,{PoY},{PoH},0,Arial,1,400,0,0,0,{EscapePtk(poText)}"));
+                $"{InlayWidthDots - 130},{PoY},{PoH},0,Arial,1,400,0,0,0,{EscapePtk(poText)}"));
 
         // ----- Date Printed (small, bottom) -----
         if (!string.IsNullOrEmpty(datePrinted))
             calls.Add(("PTK_DrawText_TrueType",
-                $"0,{DateY},{DateH},0,Arial,1,400,0,0,0,Date Printed: {EscapePtk(datePrinted)}"));
+                $"{InlayWidthDots - 130},{DateY},{DateH},0,Arial,1,400,0,0,0,Date Printed: {EscapePtk(datePrinted)}"));
 
         if (withRfid)
         {
