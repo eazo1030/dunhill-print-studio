@@ -228,28 +228,30 @@ public sealed class PostekBrowserPrintTransport : IDisposable
         // ----- Fabric name (top, dark) -----
         if (!string.IsNullOrEmpty(fabricName))
             calls.Add(("PTK_DrawText_TrueType",
-                $"14,10,30,0,Arial,1,700,0,0,0,Fabric: {EscapePtk(fabricName)}"));
+                $"14,14,38,0,Arial,1,700,0,0,0,Fabric: {EscapePtk(fabricName)}"));
 
         // ----- Yardage (the headline) -----
         if (!string.IsNullOrEmpty(yardageText))
             calls.Add(("PTK_DrawText_TrueType",
-                $"14,46,56,0,Arial,1,700,0,0,0,{EscapePtk(yardageText)}"));
+                $"14,62,80,0,Arial,1,700,0,0,0,{EscapePtk(yardageText)}"));
 
         // ----- Divider rule between Yardage and PO -----
-        // PTK_DrawLine takes x1, y1, x2, y2, width — draws a 2-dot thick
-        // line full-width across the label.
+        // PTK_DrawLine takes x1, y1, x2, y2, width — draws a 3-dot thick
+        // line full-width across the label. Width is 862 dots at 300 dpi
+        // for 73mm stock; right edge inset by 14 dots for parity with the
+        // left margin.
         calls.Add(("PTK_DrawLine",
-            "14,106,568,108,2"));
+            "14,150,848,152,3"));
 
         // ----- PO -----
         if (!string.IsNullOrEmpty(poText))
             calls.Add(("PTK_DrawText_TrueType",
-                $"14,114,22,0,Arial,1,400,0,0,0,{EscapePtk(poText)}"));
+                $"14,160,28,0,Arial,1,400,0,0,0,{EscapePtk(poText)}"));
 
         // ----- Date Printed (small, bottom) -----
         if (!string.IsNullOrEmpty(datePrinted))
             calls.Add(("PTK_DrawText_TrueType",
-                $"14,140,14,0,Arial,1,400,0,0,0,Date Printed: {EscapePtk(datePrinted)}"));
+                $"14,200,18,0,Arial,1,400,0,0,0,Date Printed: {EscapePtk(datePrinted)}"));
 
         if (withRfid)
         {

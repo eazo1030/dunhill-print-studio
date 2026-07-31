@@ -32,13 +32,13 @@ public partial class PrintViewModel : ObservableObject
 
     public ObservableCollection<string> RecentJobs { get; } = new();
 
-    // 73mm × 20mm RFID inlay at 203 dpi (the operator's stock media):
-    //   width  = 73 mm * 203/25.4 ≈ 583 dots
-    //   height = 20 mm * 203/25.4 ≈ 160 dots
-    // PTK_SetLabelHeight will use (160, 24, 0, false) on every Browser Print
-    // job, which is the right shape for this stock. Change the constructor
-    // below if you switch media later.
-    public LabelDimensions Dims { get; } = new(583, 160);
+    // ZR300I is **300 DPI** (1 dot = 0.085 mm) — confirmed against the
+    // Postek PPL API Manual v2.04 on 2026-07-31 after v1.2.4 through
+    // v1.2.8 printed tiny text crammed into the upper-left because we
+    // were passing 203-dpi dimensions and the printer framed the label
+    // to those smaller bounds, then clipped the actual physical media.
+    // 73 × 20 mm at 300 dpi = 862 × 236 dots.
+    public LabelDimensions Dims { get; } = new(862, 236);
 
     partial void OnSkuChanged(string value) { /* form binding — preview removed in v1.2.7 */ }
     partial void OnItemNameChanged(string value) { /* same */ }
