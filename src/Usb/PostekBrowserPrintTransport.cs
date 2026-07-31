@@ -228,47 +228,39 @@ public sealed class PostekBrowserPrintTransport : IDisposable
         //   Date:     y=140, h=20
         //   Bottom margin = 236 − (140+20) = 76 dots ~ 6 mm.
         //
-        // v1.2.22 — root-cause X clipping fix.
+        // v1.2.23 — operator's v1.2.22 photo is the breakthrough: top-down
+        // order correct, but Fabric clipped on the right. Root cause:
+        // B-direction actually places Anchor X at the GLYPH's LEFT
+        // EDGE (not right edge as I assumed in v1.2.22). X grows to the
+        // RIGHT in B-direction on this ZR300I. The glyph extends
+        // rightward from X.
         //
-        // v1.2.21 result (operator photo): all 4 elements print in
-        // correct top-down order, but Fabric was clipped on the right
-        // ("Fabric: A" rather than the full name). Yardage was bold
-        // and inside the inlay. Date Printed was small at the bottom.
-        // The error was X-anchor placement: every line used X ∈ [240..560],
-        // but Anchor X is the **glyph's right edge** for B-direction;
-        // the glyph extends LEFT from there. For h=84 Fabric ("Fabric:
-        // French"), the glyph is ~700 dots wide; an anchor of X=560 put
-        // the right edge past the printable area (560 + 700 = 1260 > 862).
+        // v1.2.22 used X=156 (= inlay_width − estimated width). With X as
+        // the LEFT edge, that put the left edge of "Fabric: Artistry"
+        // 156 dots inside — so the visible right portion is the LAST
+        // 700 dots of the glyph: "A:istry". Confirmed by operator photo.
         //
-        // v1.2.22 rule:
-        //   anchor_X = inlay_width − (fontHeight × 0.6 × char_count)
-        // where 0.6 is Postek's typical AdvanceWidth proportion for Arial
-        // bold. Anchor = right edge of glyph in B-direction.
+        // v1.2.23: Anchor X = small left-margin value (≈14 dots ≈ 1.2 mm).
+        // Glyph extends rightward from there. For "Fabric: Artistry"
+        // at h=84 (≈ 700 dots wide), right edge of glyph = X + 700 =
+        // 714 → fits inside 862-dot inlay with 148 dots of right margin.
         //
-        // Computed values for typical inputs:
-        //   Fabric:    anchor = 862 − 84×0.6×14 = ~156  (BIG, near left edge)
-        //   Yardage:   anchor = 862 − 72×0.6×3  = ~732
-        //   PO:        anchor = 862 − 32×0.6×3  = ~804
-        //   Date:      anchor = 862 − 24×0.6×21 = ~560
-        //
-        // The headerText slot can also use this same rule via the
-        // headerText string (if non-empty).
-        //
-        // Y values from v1.2.21 worked correctly; keep them.
+        // Y values from v1.2.21 worked (small Y = top, large Y = bottom)
+        // — keep them. HeaderText slot left as a future-use no-op.
 
         const int InlayWidthDots      = 862;
         const int FabricY             = 4;
-        const int FabricH             = 84;
-        const int FabricX             = 156;   // right edge near left margin
+        const int FabricH             = 84;    // BIGGEST
+        const int FabricX             = 14;    // near LEFT edge of inlay
         const int YardY               = 92;
         const int YardH               = 72;
-        const int YardX               = 732;   // short number, fits easily
+        const int YardX               = 14;
         const int PoY                 = 170;
         const int PoH                 = 32;
-        const int PoX                 = 804;
+        const int PoX                 = 14;
         const int DateY               = 204;
         const int DateH               = 24;
-        const int DateX               = 560;
+        const int DateX               = 14;
 
         var calls = new List<(string name, object value)>
         {
