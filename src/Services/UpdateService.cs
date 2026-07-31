@@ -61,14 +61,25 @@ public sealed class UpdateService
     }
 
     /// <summary>
-    /// Atomically replace the current install and relaunch the app.
+    /// Apply a Velopack update and restart the app.
+    ///
+    /// v1.2.11 fix: previously this called <c>ApplyUpdatesAndExit</c>,
+    /// which terminates the WPF process without launching
+    /// <c>Update.exe</c> to re-launch the new version. Result: the
+    /// app window closed silently and the user had to restart Print
+    /// Studio by hand to pick up the new bits. The correct Velopack
+    /// API for "exit AND restart me" is <c>ApplyUpdatesAndRestart</c>,
+    /// which stages the new version, exits the current process, and
+    /// launches Update.exe — Update.exe atomically applies the staged
+    /// payload and re-launches the app for us.
+    ///
     /// MUST be called on the UI thread so WPF can shut down cleanly.
     /// Process exits inside this call.
     /// </summary>
     public void ApplyUpdatesAndExit(UpdateInfo info)
     {
-        Log($"ApplyUpdatesAndExit: target={info.TargetFullRelease.Version}");
-        _mgr.ApplyUpdatesAndExit(info);
+        Log($"ApplyUpdatesAndRestart: target={info.TargetFullRelease.Version}");
+        _mgr.ApplyUpdatesAndRestart(info);
     }
 
     private static void Log(string msg)
