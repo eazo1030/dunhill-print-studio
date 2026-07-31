@@ -301,27 +301,44 @@ public sealed class PostekBrowserPrintTransport : IDisposable
 
         // ----- Fabric name (top, dark) -----
         // 11 positional args, then data. NOTE: no id_name slot.
-        // X coordinate: in B-direction (default), X grows LEFT from
-        // the bottom-right corner. So (inlay_width - 130) means
-        // "land the glyph 130 dots inside the LEFT edge of the inlay".
+        // X coordinate: in B-direction (default), X grows LEFT from the
+        // bottom-right corner. The X value passed to PTK_DrawText_TrueType
+        // is the **anchor** of the text — the glyph extends LEFTWARD from
+        // there by the text width. Total glyph width varies with font height
+        // and character set; for Arial 36-dot-tall, "Fabric: French" is
+        // ~250 dots wide. So if we want the right edge of "Fabric: HELLO"
+        // to land ~30 dots inside the visible right edge of the inlay, set
+        // the anchor X = (inlay_width) − 250 − 30 = 582.
+        //
+        // v1.2.18 used (inlay_width − 130) = 732. v1.2.18 result was clipped
+        // because the right edge of the glyph landed past the printable
+        // area: 732 + 250 (text width) ≈ 982 > 862 (label width).
+        //
+        // v1.2.19 sanity-checks with a much more conservative X = 400 (far
+        // inside the inlay), well to the left of where any clipping could
+        // occur. If v1.2.19 still has clipping, the actual printable width
+        // is much narrower than 862 dots (e.g. 600) — but we can adjust
+        // once we see the result.
+        const int TextAnchorXDots = 400;     // v1.2.19 bisection probe
+
         if (!string.IsNullOrEmpty(fabricName))
             calls.Add(("PTK_DrawText_TrueType",
-                $"{InlayWidthDots - 130},{FabricY},{FabricH},0,Arial,1,400,0,0,0,Fabric: {EscapePtk(fabricName)}"));
+                $"{TextAnchorXDots},{FabricY},{FabricH},0,Arial,1,400,0,0,0,Fabric: {EscapePtk(fabricName)}"));
 
         // ----- Yardage (the headline) -----
         if (!string.IsNullOrEmpty(yardageText))
             calls.Add(("PTK_DrawText_TrueType",
-                $"{InlayWidthDots - 130},{YardY},{YardH},0,Arial,1,700,0,0,0,{EscapePtk(yardageText)}"));
+                $"{TextAnchorXDots},{YardY},{YardH},0,Arial,1,700,0,0,0,{EscapePtk(yardageText)}"));
 
         // ----- PO -----
         if (!string.IsNullOrEmpty(poText))
             calls.Add(("PTK_DrawText_TrueType",
-                $"{InlayWidthDots - 130},{PoY},{PoH},0,Arial,1,400,0,0,0,{EscapePtk(poText)}"));
+                $"{TextAnchorXDots},{PoY},{PoH},0,Arial,1,400,0,0,0,{EscapePtk(poText)}"));
 
         // ----- Date Printed (small, bottom) -----
         if (!string.IsNullOrEmpty(datePrinted))
             calls.Add(("PTK_DrawText_TrueType",
-                $"{InlayWidthDots - 130},{DateY},{DateH},0,Arial,1,400,0,0,0,Date Printed: {EscapePtk(datePrinted)}"));
+                $"{TextAnchorXDots},{DateY},{DateH},0,Arial,1,400,0,0,0,Date Printed: {EscapePtk(datePrinted)}"));
 
         if (withRfid)
         {

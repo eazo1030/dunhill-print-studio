@@ -28,9 +28,9 @@
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
     <DebugType>embedded</DebugType>
-    <Version>1.2.18</Version>
-    <AssemblyVersion>1.2.18.0</AssemblyVersion>
-    <FileVersion>1.2.18.0</FileVersion>
+    <Version>1.2.19</Version>
+    <AssemblyVersion>1.2.19.0</AssemblyVersion>
+    <FileVersion>1.2.19.0</FileVersion>
     <Product>Dunhill Print Studio</Product>
     <Company>Dunhill Global</Company>
     <Copyright>Copyright © 2026 Dunhill Global</Copyright>
