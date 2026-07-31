@@ -198,54 +198,46 @@ public sealed class PostekBrowserPrintTransport : IDisposable
         //     ~70 mm × 18 mm (the operator's photo shows the inlay
         //     within a clear backing-film border on each side).
         //
-        //   Empirical observation (from the v1.2.10 test print):
-        //     Sending x=14 to PTK_DrawTextTrueTypeW produced text with
-        //     its left edge at ~+30 dots INSIDE the visible inlay. We
-        //     therefore conclude the printer's coordinate origin (0,0)
-        //     is approximately 30 dots (~2.5 mm) to the LEFT of the
-        //     visible inlay edge — the head sits in the gap between
-        //     backing film and printed area. Same math vertically: y=14
-        //     drew text at ~+30 dots down from the visible top.
-        //
-        //   Compensation: to land text at a position `m` dots from the
-        //     visible inlay edge, send x = m + 30 (origin offset).
-        //     For 2.5 mm visible left inset (30 dots), send x = 60.
-        //     That's far enough that no operator-printed value is
-        //     clamped by Math.Max(0, …) and small enough that text fits
-        //     comfortably within the 70 mm inlay width.
-        //
-        //   If the v1.2.13 print shows visible left clipping again, the
-        //     offset is probably larger (3-5 mm is typical for industrial
-        //     printers with tear bars). Bump OriginOffsetDots to 60 and
-        //     re-print.
-        const int OriginOffsetDots = 30;        // empirical ≈ 2.5 mm
-        const int VisibleLeftInsetDots = 30;    // 30 ≈ 2.5 mm (clean inset)
-        const int VisibleRightInsetDots = 30;   // symmetric right margin
-        const int VisibleTopInsetDots = 30;
-        const int VisibleBottomInsetDots = 16;
+        //   v1.2.14 — origin-offset hypothesis abandoned.
+        //     The empirical +30 dot offset (v1.2.13) made things WORSE
+        //     (text wrapped to the bottom-left instead of centering).
+        //     The printer's coordinate (0,0) is somewhere we cannot
+        //     model without either: (a) actual PTK reference docs, or
+        //     (b) successful prints from which to bisect. We have
+        //     neither. Default to 0 (use the printer's own origin);
+        //     if v1.2.14 still misses we go back to bisection.
+        const int OriginOffsetDots = 0;
+        const int VisibleLeftInsetDots   = 18;   // 18 ≈ 1.5 mm
+        const int VisibleRightInsetDots  = 18;
+        const int VisibleTopInsetDots    = 18;   // ≈ 1.5 mm
+        const int VisibleBottomInsetDots = 14;
 
-        int X0 = VisibleLeftInsetDots + OriginOffsetDots;       // 60
-        int Y0 = VisibleTopInsetDots  + OriginOffsetDots;       // 60
+        int X0 = VisibleLeftInsetDots + OriginOffsetDots;       // 18
+        int Y0 = VisibleTopInsetDots  + OriginOffsetDots;       // 18
 
-        // Vertical layout for the inlay at 300 dpi (96 dots of usable
-        // height after subtracting 3 mm of mechanical margins from a
-        // 20 mm inlay). All Y coordinates are absolute printer dots,
-        // measured from the printer origin (not the visible inlay edge);
-        // the OriginOffsetDots=30 above moves them onto the inlay.
+        // Vertical layout for the inlay at 300 dpi (236 dots of total
+        // label height). All Y coordinates are absolute printer dots
+        // from the printer's origin (0,0). v1.2.14 used offsets of 0
+        // and the operator-confirmed (visible in their photo) result
+        // was left-of-center placement; bisect from there in v1.2.15.
         //
-        //   Fabric:    y=Y0     (=60), h=30, ends y=90
-        //   Yardage:   y=92,        h=80, ends y=172  (the headline, bold)
-        //   PO:        y=178,       h=22, ends y=200
-        //   Date:      y=210,       h=14, ends y=224
-        //   Bottom margin = labelHeightDots - 224 = 236 - 224 = 12 dots.
+        //   Fabric:   y=Y0     (=18), h=30, ends y=48
+        //   Yardage:  y=58,        h=80, ends y=138  (headline, bold)
+        //   PO:       y=148,       h=22, ends y=170
+        //   Date:     y=180,       h=14, ends y=194
+        //   Bottom margin = 236 - 194 = 42 dots ~ 3.5 mm.
         //
-        // PTK_DrawTextTrueTypeW signature (Postek PPL API Manual v2.04):
-        //   (px, py, FHeight, FWidth, FType, Fspin, Fweight, Fitalic,
-        //    Funline, FstrikeOut, id_name, data)
-        // — 12 positional args. The id_name slot at position 11 is
-        // REQUIRED; without it the printer swallows the call or falls
-        // back to a tiny default font. Pass "A1" (per the manual's
-        // worked example) and keep the slot reserved.
+        // PTK_DrawText_TrueType call shape (Browser Print server JSON
+        // wrapper): 11 positional string args, then data:
+        //   "x, y, FHeight, FWidth, FType, Fspin, Fweight, Fitalic,
+        //    Funline, FstrikeOut, data"
+        //
+        // v1.2.14: the `id_name` slot documented in the 2006 Postek PPL
+        // API Manual is NOT exposed by the Browser Print wrapper. Passing
+        // `,A1,` as the 11th token caused the printer to render the
+        // literal text "A1," before each string. Confirmed in operator
+        // photo: "A1,Fabric: TEST" and "A1,600" appeared at the top of
+        // the v1.2.13 print. Removed.
         var calls = new List<(string name, object value)>
         {
             ("PTK_OpenUSBPort",       "255"),
@@ -268,12 +260,12 @@ public sealed class PostekBrowserPrintTransport : IDisposable
         // ----- Fabric name (top, dark) -----
         if (!string.IsNullOrEmpty(fabricName))
             calls.Add(("PTK_DrawText_TrueType",
-                $"{X0},{Y0},30,0,Arial,1,700,0,0,0,A1,Fabric: {EscapePtk(fabricName)}"));
+                $"{X0},{Y0},30,0,Arial,1,700,0,0,0,Fabric: {EscapePtk(fabricName)}"));
 
         // ----- Yardage (the headline) -----
         if (!string.IsNullOrEmpty(yardageText))
             calls.Add(("PTK_DrawText_TrueType",
-                $"{X0},92,80,0,Arial,1,700,0,0,0,A1,{EscapePtk(yardageText)}"));
+                $"{X0},58,80,0,Arial,1,700,0,0,0,{EscapePtk(yardageText)}"));
 
         // ----- (Divider rule removed in v1.2.11) -----
         // Browser Print does not export a "PTK_DrawLine" method —
@@ -286,12 +278,12 @@ public sealed class PostekBrowserPrintTransport : IDisposable
         // ----- PO -----
         if (!string.IsNullOrEmpty(poText))
             calls.Add(("PTK_DrawText_TrueType",
-                $"{X0},178,22,0,Arial,1,400,0,0,0,A1,{EscapePtk(poText)}"));
+                $"{X0},148,22,0,Arial,1,400,0,0,0,{EscapePtk(poText)}"));
 
         // ----- Date Printed (small, bottom) -----
         if (!string.IsNullOrEmpty(datePrinted))
             calls.Add(("PTK_DrawText_TrueType",
-                $"{X0},210,14,0,Arial,1,400,0,0,0,A1,Date Printed: {EscapePtk(datePrinted)}"));
+                $"{X0},180,14,0,Arial,1,400,0,0,0,Date Printed: {EscapePtk(datePrinted)}"));
 
         if (withRfid)
         {
