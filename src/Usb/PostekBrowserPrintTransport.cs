@@ -226,32 +226,35 @@ public sealed class PostekBrowserPrintTransport : IDisposable
         }
 
         // ----- Fabric name (top, dark) -----
+        // Postek PPL API Manual v2.04 §PTK_DrawTextTrueTypeW signature:
+        //   (px, py, FHeight, FWidth, FType, Fspin, Fweight, Fitalic,
+        //    Funline, FstrikeOut, id_name, data)
+        // — 12 positional args. Earlier builds were passing FType and
+        // Fspin as one combined token "Arial,1" which misaligned every
+        // subsequent slot, making the font fall back to a small default.
         if (!string.IsNullOrEmpty(fabricName))
             calls.Add(("PTK_DrawText_TrueType",
-                $"14,14,38,0,Arial,1,700,0,0,0,Fabric: {EscapePtk(fabricName)}"));
+                $"14,14,38,0,Arial,1,700,0,0,0,A1,Fabric: {EscapePtk(fabricName)}"));
 
         // ----- Yardage (the headline) -----
         if (!string.IsNullOrEmpty(yardageText))
             calls.Add(("PTK_DrawText_TrueType",
-                $"14,62,80,0,Arial,1,700,0,0,0,{EscapePtk(yardageText)}"));
+                $"14,62,80,0,Arial,1,700,0,0,0,A1,{EscapePtk(yardageText)}"));
 
         // ----- Divider rule between Yardage and PO -----
-        // PTK_DrawLine takes x1, y1, x2, y2, width — draws a 3-dot thick
-        // line full-width across the label. Width is 862 dots at 300 dpi
-        // for 73mm stock; right edge inset by 14 dots for parity with the
-        // left margin.
+        // PTK_DrawLine(x1,y1,x2,y2,width) — full width across the label.
         calls.Add(("PTK_DrawLine",
             "14,150,848,152,3"));
 
         // ----- PO -----
         if (!string.IsNullOrEmpty(poText))
             calls.Add(("PTK_DrawText_TrueType",
-                $"14,160,28,0,Arial,1,400,0,0,0,{EscapePtk(poText)}"));
+                $"14,160,28,0,Arial,1,400,0,0,0,A1,{EscapePtk(poText)}"));
 
         // ----- Date Printed (small, bottom) -----
         if (!string.IsNullOrEmpty(datePrinted))
             calls.Add(("PTK_DrawText_TrueType",
-                $"14,200,18,0,Arial,1,400,0,0,0,Date Printed: {EscapePtk(datePrinted)}"));
+                $"14,200,18,0,Arial,1,400,0,0,0,A1,Date Printed: {EscapePtk(datePrinted)}"));
 
         if (withRfid)
         {
