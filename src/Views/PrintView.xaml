@@ -72,41 +72,20 @@
             </StackPanel>
         </Border>
 
-        <!-- RIGHT: Preview + recent jobs -->
+        <!-- RIGHT: Recent jobs (PPLZ preview removed — was unused by the operator) -->
         <Border Grid.Column="1" Padding="20" Margin="8,0,0,0" CornerRadius="8" Background="#FAFAFA">
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                    <RowDefinition Height="Auto"/>
-                </Grid.RowDefinitions>
-
-                <TextBlock Grid.Row="0" Text="Live PPLZ Preview" Style="{StaticResource PanelHeader}"/>
-
-                <Border Grid.Row="1" Background="#0F172A" BorderThickness="0"
-                        Padding="14" CornerRadius="8">
-                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
-                        <TextBox Text="{Binding LabelPreview, Mode=OneWay}" IsReadOnly="True"
-                                 FontFamily="Consolas,Courier New" FontSize="11"
-                                 Background="Transparent" Foreground="#A7F3D0"
-                                 BorderThickness="0" CaretBrush="#A7F3D0"
-                                 TextWrapping="NoWrap" AcceptsReturn="True"/>
-                    </ScrollViewer>
-                </Border>
-
-                <StackPanel Grid.Row="2" Margin="0,16,0,0">
-                    <TextBlock Text="Recent prints" FontWeight="SemiBold" FontSize="13"
-                               Foreground="#374151" Margin="0,0,0,8"/>
-                    <ItemsControl ItemsSource="{Binding RecentJobs}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <TextBlock Text="{Binding}" FontFamily="Consolas" FontSize="12"
-                                           Foreground="#374151" Margin="0,2,0,2"/>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </StackPanel>
-            </Grid>
+            <StackPanel>
+                <TextBlock Text="Recent prints" FontWeight="SemiBold" FontSize="13"
+                           Foreground="#374151" Margin="0,0,0,8"/>
+                <ItemsControl ItemsSource="{Binding RecentJobs}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding}" FontFamily="Consolas" FontSize="12"
+                                       Foreground="#374151" Margin="0,2,0,2"/>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
         </Border>
     </Grid>
 </UserControl>

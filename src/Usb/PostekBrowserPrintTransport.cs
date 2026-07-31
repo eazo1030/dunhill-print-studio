@@ -176,7 +176,13 @@ public sealed class PostekBrowserPrintTransport : IDisposable
         string epcHex,
         int epcStartBlock = 2)
     {
-        // Normalize EPC: lowercase hex, no whitespace.
+        // Gen2 UHF chips expect a 96-bit (12-byte / 24-hex-char) EPC. Short
+        // values (e.g. "22244455" = 4 bytes) succeed the encode step but
+        // often fail the read-back with Postek retval 1001 ("incorrect data
+        // format" / 数据格式错误). Padding short inputs to 12 bytes avoids
+        // the read-back class failure and keeps verify-on-print predictable.
+        // Long inputs (>24 chars) are rejected — callers should fit the
+        // design in 96 bits or accept a different encoding strategy.
         epcHex = (epcHex ?? "").Trim().Replace(" ", "").Replace("-", "");
         if (epcHex.Length == 0)
         {
@@ -196,7 +202,16 @@ public sealed class PostekBrowserPrintTransport : IDisposable
                 //   labelGapDots    = ~3mm* 203 / 25.4 = 24
                 ("PTK_SetLabelHeight", $"{labelHeightDots},{labelGapDots},0,false"),
                 ("PTK_SetLabelWidth", $"{labelWidthDots}"),
-                ("PTK_DrawText_TrueType", $"30,60,40,0,Arial,1,700,0,0,0,{printText}"),
+                // Tight layout for the 160-dot-tall label media (73×20mm
+                // RFID inlay at 203 dpi):
+                //   y=10  text line 1  (h≈22) → y=32  — primary text
+                //   y=40  Code 128     (h=80) → y=120 — encodes printText
+                //   y=124 text line 2   (h≈18) → y=142 — secondary line
+                // No QR — the previous PTK_DrawBar2D_QR at y=130 (80×80)
+                // was clipping off the bottom of the label.
+                ("PTK_DrawText_TrueType", $"10,10,22,0,Arial,1,700,0,0,0,{printText}"),
+                ("PTK_DrawBarcode",      $"10,40,0,1,2,2,80,B,{printText}"),
+                ("PTK_DrawText_TrueType", $"10,124,18,0,Arial,1,400,0,0,0,{printText}"),
                 ("PTK_PrintLabel", "1,1"),
                 ("PTK_CloseUSBPort", ""),
             };
@@ -206,13 +221,15 @@ public sealed class PostekBrowserPrintTransport : IDisposable
         // Validate: must be even-length hex string. nWDataNum = bytes.
         if (epcHex.Length % 2 != 0)
             throw new ArgumentException("EPC hex must have even length.", nameof(epcHex));
-        int nWDataNum = epcHex.Length / 2;
-        // Note: PDF417 was previously in this template as PTK_DrawBar2D_PDF417
-        // (all-caps) which is silently rejected by Browser Print Server. The
-        // correct name is PTK_DrawBar2D_Pdf417 (mixed case, as the demo and
-        // PDF both use it). But PDF417 alone is decorative — QR + a barcode is
-        // enough for the operator's apparel/fabric labels. We leave it off
-        // here so a broken method name can't block the entire job.
+
+        // 96-bit Gen2 EPC: 24 hex chars / 12 bytes. Pad short values with
+        // leading zeros so the encode and the read-back agree on length.
+        // Caller must keep the value ≤ 24 chars or supply only a 96-bit ID.
+        string encodedEpcHex = epcHex.Length >= 24
+            ? epcHex[..24]
+            : epcHex.PadLeft(24, '0');
+        int nWDataNum = encodedEpcHex.Length / 2;
+
         var withRfid = new (string name, object value)[]
         {
             ("PTK_OpenUSBPort", "255"),
@@ -223,10 +240,14 @@ public sealed class PostekBrowserPrintTransport : IDisposable
             ("PTK_SetDarkness", "10"),
             ("PTK_SetLabelHeight", $"{labelHeightDots},{labelGapDots},0,false"),
             ("PTK_SetLabelWidth", $"{labelWidthDots}"),
-            ("PTK_RWRFIDLabel", $"1,0,{epcStartBlock},{nWDataNum},1,{epcHex}"),
-            ("PTK_DrawText_TrueType", $"20,40,40,0,Arial,1,700,0,0,0,{printText}"),
-            ("PTK_DrawBarcode", $"20,90,0,1,2,2,30,B,{printText}"),
-            ("PTK_DrawBar2D_QR", $"20,130,80,80,0,3,2,0,0,{printText}"),
+            // Encode FIRST so the chip is written before the label feed.
+            ("PTK_RWRFIDLabel", $"1,0,{epcStartBlock},{nWDataNum},1,{encodedEpcHex}"),
+            // Same tight layout as the no-RFID path. The text printed on
+            // the label is the caller's `printText` (sku + name, see caller
+            // in PrintService.PrintLabelJobAsync).
+            ("PTK_DrawText_TrueType", $"10,10,22,0,Arial,1,700,0,0,0,{printText}"),
+            ("PTK_DrawBarcode",      $"10,40,0,1,2,2,80,B,{printText}"),
+            ("PTK_DrawText_TrueType", $"10,124,18,0,Arial,1,400,0,0,0,{printText}"),
             ("PTK_PrintLabel", "1,1"),
             ("PTK_CloseUSBPort", ""),
         };
@@ -334,6 +355,13 @@ public sealed class PostekBrowserPrintTransport : IDisposable
             LastError = "Cannot verify: EPC hex is empty or odd-length.";
             return false;
         }
+
+        // Match BuildLabelJob's padding: Gen2 96-bit EPC = 24 hex chars /
+        // 12 bytes. Read-back must ask for the same number of bytes that
+        // was written, otherwise the chip returns a length-mismatch error
+        // (Postek retval 1001, "incorrect data").
+        if (normalized.Length < 24) normalized = normalized.PadLeft(24, '0');
+        if (normalized.Length > 24) normalized = normalized[..24];
         int nWDataNum = normalized.Length / 2;
 
         for (int attempt = 1; attempt <= maxAttempts; attempt++)
