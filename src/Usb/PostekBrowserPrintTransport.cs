@@ -188,24 +188,64 @@ public sealed class PostekBrowserPrintTransport : IDisposable
         epcHex = (epcHex ?? "").Trim().Replace(" ", "").Replace("-", "");
         var withRfid = epcHex.Length > 0;
 
-        // Tight layout for the 160-dot-tall label media (73×20mm RFID
-        // inlay at 203 dpi). Coordinates match the Designer tab preview
-        // 1:1 so what the operator sees in Designer is what prints.
+        // Layout constants — derived from physical mm, not empirical
+        // pixel values, so the math is auditable.
         //
-        //   y=10  Fabric Name     h=30  → y=40   (position 1)
-        //   y=46  Yardage         h=56  → y=102  (headline, bold)
-        //   y=106 Divider rule    2 dots line, x=14..568
-        //   y=114 PO              h=22  → y=136
-        //   y=140 Date Printed    h=14  → y=154
+        //   ZR300I = 300 DPI (Postek PPL API Manual v2.04 §Abbrev) →
+        //     1 dot = 25.4 mm / 300 = 0.0847 mm  ≈ 12 dots / mm.
         //
-        // All coordinates are in 203-dpi dots from the label's top-left
-        // origin. Total used height: 154 / 160 — leaves 6 dots of bottom
-        // margin so no element is right at the edge.
+        //   Label media: 73×20 mm RFID inlay. The visible inlay area is
+        //     ~70 mm × 18 mm (the operator's photo shows the inlay
+        //     within a clear backing-film border on each side).
         //
-        // PTK_DrawText_TrueType signature: x, y, fontHeight, rotation,
-        // fontFace, bold, weight, italic, underline, strike, text
-        // (10 numeric args + text). Defaults here: Arial 1, weight 700
-        // (bold) for the headline, 400 (regular) for the rest.
+        //   Empirical observation (from the v1.2.10 test print):
+        //     Sending x=14 to PTK_DrawTextTrueTypeW produced text with
+        //     its left edge at ~+30 dots INSIDE the visible inlay. We
+        //     therefore conclude the printer's coordinate origin (0,0)
+        //     is approximately 30 dots (~2.5 mm) to the LEFT of the
+        //     visible inlay edge — the head sits in the gap between
+        //     backing film and printed area. Same math vertically: y=14
+        //     drew text at ~+30 dots down from the visible top.
+        //
+        //   Compensation: to land text at a position `m` dots from the
+        //     visible inlay edge, send x = m + 30 (origin offset).
+        //     For 2.5 mm visible left inset (30 dots), send x = 60.
+        //     That's far enough that no operator-printed value is
+        //     clamped by Math.Max(0, …) and small enough that text fits
+        //     comfortably within the 70 mm inlay width.
+        //
+        //   If the v1.2.13 print shows visible left clipping again, the
+        //     offset is probably larger (3-5 mm is typical for industrial
+        //     printers with tear bars). Bump OriginOffsetDots to 60 and
+        //     re-print.
+        const int OriginOffsetDots = 30;        // empirical ≈ 2.5 mm
+        const int VisibleLeftInsetDots = 30;    // 30 ≈ 2.5 mm (clean inset)
+        const int VisibleRightInsetDots = 30;   // symmetric right margin
+        const int VisibleTopInsetDots = 30;
+        const int VisibleBottomInsetDots = 16;
+
+        int X0 = VisibleLeftInsetDots + OriginOffsetDots;       // 60
+        int Y0 = VisibleTopInsetDots  + OriginOffsetDots;       // 60
+
+        // Vertical layout for the inlay at 300 dpi (96 dots of usable
+        // height after subtracting 3 mm of mechanical margins from a
+        // 20 mm inlay). All Y coordinates are absolute printer dots,
+        // measured from the printer origin (not the visible inlay edge);
+        // the OriginOffsetDots=30 above moves them onto the inlay.
+        //
+        //   Fabric:    y=Y0     (=60), h=30, ends y=90
+        //   Yardage:   y=92,        h=80, ends y=172  (the headline, bold)
+        //   PO:        y=178,       h=22, ends y=200
+        //   Date:      y=210,       h=14, ends y=224
+        //   Bottom margin = labelHeightDots - 224 = 236 - 224 = 12 dots.
+        //
+        // PTK_DrawTextTrueTypeW signature (Postek PPL API Manual v2.04):
+        //   (px, py, FHeight, FWidth, FType, Fspin, Fweight, Fitalic,
+        //    Funline, FstrikeOut, id_name, data)
+        // — 12 positional args. The id_name slot at position 11 is
+        // REQUIRED; without it the printer swallows the call or falls
+        // back to a tiny default font. Pass "A1" (per the manual's
+        // worked example) and keep the slot reserved.
         var calls = new List<(string name, object value)>
         {
             ("PTK_OpenUSBPort",       "255"),
@@ -226,20 +266,14 @@ public sealed class PostekBrowserPrintTransport : IDisposable
         }
 
         // ----- Fabric name (top, dark) -----
-        // Postek PPL API Manual v2.04 §PTK_DrawTextTrueTypeW signature:
-        //   (px, py, FHeight, FWidth, FType, Fspin, Fweight, Fitalic,
-        //    Funline, FstrikeOut, id_name, data)
-        // — 12 positional args. Earlier builds were passing FType and
-        // Fspin as one combined token "Arial,1" which misaligned every
-        // subsequent slot, making the font fall back to a small default.
         if (!string.IsNullOrEmpty(fabricName))
             calls.Add(("PTK_DrawText_TrueType",
-                $"14,14,38,0,Arial,1,700,0,0,0,A1,Fabric: {EscapePtk(fabricName)}"));
+                $"{X0},{Y0},30,0,Arial,1,700,0,0,0,A1,Fabric: {EscapePtk(fabricName)}"));
 
         // ----- Yardage (the headline) -----
         if (!string.IsNullOrEmpty(yardageText))
             calls.Add(("PTK_DrawText_TrueType",
-                $"14,62,80,0,Arial,1,700,0,0,0,A1,{EscapePtk(yardageText)}"));
+                $"{X0},92,80,0,Arial,1,700,0,0,0,A1,{EscapePtk(yardageText)}"));
 
         // ----- (Divider rule removed in v1.2.11) -----
         // Browser Print does not export a "PTK_DrawLine" method —
@@ -252,12 +286,12 @@ public sealed class PostekBrowserPrintTransport : IDisposable
         // ----- PO -----
         if (!string.IsNullOrEmpty(poText))
             calls.Add(("PTK_DrawText_TrueType",
-                $"14,160,28,0,Arial,1,400,0,0,0,A1,{EscapePtk(poText)}"));
+                $"{X0},178,22,0,Arial,1,400,0,0,0,A1,{EscapePtk(poText)}"));
 
         // ----- Date Printed (small, bottom) -----
         if (!string.IsNullOrEmpty(datePrinted))
             calls.Add(("PTK_DrawText_TrueType",
-                $"14,200,18,0,Arial,1,400,0,0,0,A1,Date Printed: {EscapePtk(datePrinted)}"));
+                $"{X0},210,14,0,Arial,1,400,0,0,0,A1,Date Printed: {EscapePtk(datePrinted)}"));
 
         if (withRfid)
         {
