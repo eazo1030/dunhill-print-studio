@@ -228,46 +228,47 @@ public sealed class PostekBrowserPrintTransport : IDisposable
         //   Date:     y=140, h=20
         //   Bottom margin = 236 − (140+20) = 76 dots ~ 6 mm.
         //
-        // v1.2.21 — final layout. Operator's directives:
-        //   * Order top → bottom: Fabric, Yardage, PO, Date Printed.
-        //   * Fabric = BIGGEST writing on the label.
-        //   * Text should fill the label (not be tiny in upper-right).
+        // v1.2.22 — root-cause X clipping fix.
         //
-        // Operator reports the v1.2.20 print showed the right elements in
-        // roughly the right places, but they were crammed into the top half
-        // of the inlay because the Y values were clustered. This version
-        // spreads the elements vertically to use the full 236-dot height
-        // AND makes Fabric noticeably the biggest.
+        // v1.2.21 result (operator photo): all 4 elements print in
+        // correct top-down order, but Fabric was clipped on the right
+        // ("Fabric: A" rather than the full name). Yardage was bold
+        // and inside the inlay. Date Printed was small at the bottom.
+        // The error was X-anchor placement: every line used X ∈ [240..560],
+        // but Anchor X is the **glyph's right edge** for B-direction;
+        // the glyph extends LEFT from there. For h=84 Fabric ("Fabric:
+        // French"), the glyph is ~700 dots wide; an anchor of X=560 put
+        // the right edge past the printable area (560 + 700 = 1260 > 862).
         //
-        // Layout (v1.2.21 — top-down, full-height):
-        //   Fabric:  y=4,   h=84, x=560 — biggest, top band
-        //             (h=84 ≈ 7 mm cap-height; font weight 700 bold)
-        //   Yardage: y=92,  h=72, x=480 — second biggest, mid band
-        //   PO:      y=170, h=32, x=320 — lower band
-        //   Date:    y=204, h=24, x=240 — bottom band
+        // v1.2.22 rule:
+        //   anchor_X = inlay_width − (fontHeight × 0.6 × char_count)
+        // where 0.6 is Postek's typical AdvanceWidth proportion for Arial
+        // bold. Anchor = right edge of glyph in B-direction.
         //
-        // Vertical budget: 0 (top) → 228 (bottom).
-        //   Margin top:   4 dots
-        //   Gap Fabric→Yardage: 4 dots (y=88 → y=92)
-        //   Gap Yardage→PO:     6 dots (y=164 → y=170)
-        //   Gap PO→Date:        2 dots (y=202 → y=204)  ← tight, by design
-        //   Margin bottom:    8 dots (228 → 236)
+        // Computed values for typical inputs:
+        //   Fabric:    anchor = 862 − 84×0.6×14 = ~156  (BIG, near left edge)
+        //   Yardage:   anchor = 862 − 72×0.6×3  = ~732
+        //   PO:        anchor = 862 − 32×0.6×3  = ~804
+        //   Date:      anchor = 862 − 24×0.6×21 = ~560
         //
-        // ZR300I = 300 DPI: 73 × 20 mm inlay = 862 × 236 dots.
+        // The headerText slot can also use this same rule via the
+        // headerText string (if non-empty).
+        //
+        // Y values from v1.2.21 worked correctly; keep them.
 
         const int InlayWidthDots      = 862;
-        const int FabricY             = 4;     // top of inlay
-        const int FabricH             = 84;    // BIGGEST
-        const int FabricX             = 560;
-        const int YardY               = 92;    // below Fabric
-        const int YardH               = 72;    // second-biggest
-        const int YardX               = 480;
-        const int PoY                 = 170;   // below Yardage
+        const int FabricY             = 4;
+        const int FabricH             = 84;
+        const int FabricX             = 156;   // right edge near left margin
+        const int YardY               = 92;
+        const int YardH               = 72;
+        const int YardX               = 732;   // short number, fits easily
+        const int PoY                 = 170;
         const int PoH                 = 32;
-        const int PoX                 = 320;
-        const int DateY               = 204;   // bottom band
+        const int PoX                 = 804;
+        const int DateY               = 204;
         const int DateH               = 24;
-        const int DateX               = 240;
+        const int DateX               = 560;
 
         var calls = new List<(string name, object value)>
         {
