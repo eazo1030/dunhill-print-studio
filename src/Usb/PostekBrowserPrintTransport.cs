@@ -228,49 +228,63 @@ public sealed class PostekBrowserPrintTransport : IDisposable
         //   Date:     y=140, h=20
         //   Bottom margin = 236 − (140+20) = 76 dots ~ 6 mm.
         //
-        // v1.2.18 — abandon PTK_SetDirection entirely; use the default
-        // ("B") and lay out coordinates the way the T-origin was meant
-        // to model — bottom-left origin, Y goes up, but DON'T ask the
-        // printer to rotate the print job.
+        // v1.2.20 — operator-required final layout.
         //
-        // v1.2.17 analysis from operator photo:
-        //   The v1.2.16 label in the photo is mirrored + upside-down and
-        //   sitting at the right edge of the inlay. That means
-        //   PTK_SetDirection("T") BOTH flipped Y axis AND rotated the
-        //   entire job 180°. The combination sent my coordinates into
-        //   the printer-side rotation matrix, which mirrored my
-        //   content. The "right side" placement means the X axis got
-        //   inverted too: my X=0 was at the FAR RIGHT edge of the
-        //   inlay, not the left.
+        // v1.2.19 result (operator-confirmed from photo): text is in
+        // normal reading orientation (not mirrored), but render order
+        // on the label is BOTTOM-UP (Fabric at bottom, Date Printed at
+        // top). Y axis confirmed: smaller Y → TOP of inlay, larger Y
+        // → BOTTOM. (This contradicts the page-6 manual diagram that
+        // showed Y going UP, but the printer firmware behavior is what
+        // actually matters here.)
         //
-        // Strategy: revert to default ("B") direction and let the
-        // coordinate system behave normally — bottom-right origin,
-        // X grows LEFT, Y grows UP (the documented B behavior on page 6).
-        // Then flip MY coordinates to put content on the visible inlay.
-        // X = (max X) − my chosen X − (text width).
-        // Y = (max Y) − my Y.
+        // Operator asks for top-down order with Fabric as the
+        // BIGGEST element:
+        //   1. Fabric:      (biggest, top)
+        //   2. Yardage:    (second biggest, middle)
+        //   3. PO:         (smaller, lower)
+        //   4. Date Printed (smallest, bottom)
         //
-        // Layout (default B origin, Y grows up, X grows left):
-        //   Fabric:    x=720, y=180, h=36 (top, near right edge of inlay)
-        //   Yardage:   x=720, y=82,  h=64 (mid, the headline band)
-        //   PO:        x=720, y=50,  h=24
-        //   Date:      x=720, y=20,  h=20 (bottom)
+        // Layout (v1.2.20 layout constants — all confirmed by v1.2.19):
+        //   Fabric:  y=4,   h=72 — biggest, just below top edge (h=72
+        //           ≈ 6 mm cap height at 300 DPI; fills the top band)
+        //   Yardage: y=82,  h=64 — second biggest, mid band
+        //   PO:      y=152, h=28 — between Yardage and Date
+        //   Date:    y=186, h=22 — bottom band, small
+        //   Bottom margin = 236 − (186+22) = 28 dots ≈ 2.3 mm
         //
-        // (X=720 chosen so that, after Postek's B-direction X-inversion,
-        //  the printed glyph lands ~25–50 dots inside the inlay's LEFT
-        //  edge; tune after seeing the v1.2.18 result.)
+        // X coordination: B-direction places glyph anchor at X with the
+        // glyph extending LEFTWARD. For "Fabric: French" at h=72, glyph
+        // width ≈ 480 dots — set X = 480 to land the right edge ~30 dots
+        // inside the right edge. For "Date Printed: 12/23/2026" at h=22
+        // (~180 dots wide), set X = 180.
         //
-        // ZR300I = 300 DPI: 73 × 20 mm inlay → 862 × 236 dots.
+        // Better idea: compute X = (glyph_width_factor * fontHeight) and
+        // use that. Postek's PTK_DrawText_TrueType scales glyph width
+        // roughly proportional to fontHeight * char-count. Empirical:
+        //   ~0.6 * fontHeight per character for proportional Arial.
+        // Set X = 0.6 * fontHeight * (data length + 1 for safety) +
+        // right-margin.
+        //
+        // For simplicity here, just hardcode clean X values per line:
+        //   Fabric (h=72, ~14 chars): X=560  (1.6 mm ~ 40 dots from right)
+        //   Yardage (h=64, ~5 chars): X=420  (well inside, number is short)
+        //   PO (h=28, ~10 chars):      X=300
+        //   Date (h=22, ~24 chars):     X=240
 
-        const int InlayWidthDots  = 862;
-        const int DateY   = 20;   // bottom (small DatePrinted)
-        const int DateH   = 20;
-        const int PoY     = 50;
-        const int PoH     = 24;
-        const int YardY   = 82;    // headline band
-        const int YardH   = 64;
-        const int FabricY = 180;   // top
-        const int FabricH = 36;
+        const int InlayWidthDots      = 862;
+        const int FabricY             = 4;     // top
+        const int FabricH             = 72;
+        const int FabricX             = 560;
+        const int YardY               = 82;    // mid
+        const int YardH               = 64;
+        const int YardX               = 420;
+        const int PoY                 = 152;
+        const int PoH                 = 28;
+        const int PoX                 = 300;
+        const int DateY               = 186;   // bottom
+        const int DateH               = 22;
+        const int DateX               = 240;
 
         var calls = new List<(string name, object value)>
         {
@@ -299,46 +313,25 @@ public sealed class PostekBrowserPrintTransport : IDisposable
             // Unused — leave the slot here for future use.
         }
 
-        // ----- Fabric name (top, dark) -----
-        // 11 positional args, then data. NOTE: no id_name slot.
-        // X coordinate: in B-direction (default), X grows LEFT from the
-        // bottom-right corner. The X value passed to PTK_DrawText_TrueType
-        // is the **anchor** of the text — the glyph extends LEFTWARD from
-        // there by the text width. Total glyph width varies with font height
-        // and character set; for Arial 36-dot-tall, "Fabric: French" is
-        // ~250 dots wide. So if we want the right edge of "Fabric: HELLO"
-        // to land ~30 dots inside the visible right edge of the inlay, set
-        // the anchor X = (inlay_width) − 250 − 30 = 582.
-        //
-        // v1.2.18 used (inlay_width − 130) = 732. v1.2.18 result was clipped
-        // because the right edge of the glyph landed past the printable
-        // area: 732 + 250 (text width) ≈ 982 > 862 (label width).
-        //
-        // v1.2.19 sanity-checks with a much more conservative X = 400 (far
-        // inside the inlay), well to the left of where any clipping could
-        // occur. If v1.2.19 still has clipping, the actual printable width
-        // is much narrower than 862 dots (e.g. 600) — but we can adjust
-        // once we see the result.
-        const int TextAnchorXDots = 400;     // v1.2.19 bisection probe
-
+        // ----- Fabric name (top, dark, BIGGEST font per operator) -----
         if (!string.IsNullOrEmpty(fabricName))
             calls.Add(("PTK_DrawText_TrueType",
-                $"{TextAnchorXDots},{FabricY},{FabricH},0,Arial,1,400,0,0,0,Fabric: {EscapePtk(fabricName)}"));
+                $"{FabricX},{FabricY},{FabricH},0,Arial,1,700,0,0,0,Fabric: {EscapePtk(fabricName)}"));
 
-        // ----- Yardage (the headline) -----
+        // ----- Yardage (second biggest, headline number) -----
         if (!string.IsNullOrEmpty(yardageText))
             calls.Add(("PTK_DrawText_TrueType",
-                $"{TextAnchorXDots},{YardY},{YardH},0,Arial,1,700,0,0,0,{EscapePtk(yardageText)}"));
+                $"{YardX},{YardY},{YardH},0,Arial,1,700,0,0,0,{EscapePtk(yardageText)}"));
 
-        // ----- PO -----
+        // ----- PO (mid-low band) -----
         if (!string.IsNullOrEmpty(poText))
             calls.Add(("PTK_DrawText_TrueType",
-                $"{TextAnchorXDots},{PoY},{PoH},0,Arial,1,400,0,0,0,{EscapePtk(poText)}"));
+                $"{PoX},{PoY},{PoH},0,Arial,1,400,0,0,0,{EscapePtk(poText)}"));
 
-        // ----- Date Printed (small, bottom) -----
+        // ----- Date Printed (smallest, bottom band) -----
         if (!string.IsNullOrEmpty(datePrinted))
             calls.Add(("PTK_DrawText_TrueType",
-                $"{TextAnchorXDots},{DateY},{DateH},0,Arial,1,400,0,0,0,Date Printed: {EscapePtk(datePrinted)}"));
+                $"{DateX},{DateY},{DateH},0,Arial,1,400,0,0,0,Date Printed: {EscapePtk(datePrinted)}"));
 
         if (withRfid)
         {
