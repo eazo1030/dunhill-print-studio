@@ -169,7 +169,11 @@ public sealed class PostekBrowserPrintTransport : IDisposable
     /// physical dimensions in inches/mm to the calling view-model.
     /// </remarks>
     public static string BuildLabelJob(
-        string printText,
+        string headerText,
+        string fabricName,
+        string yardageText,
+        string poText,
+        string datePrinted,
         int labelWidthDots,
         int labelHeightDots,
         int labelGapDots,
@@ -181,77 +185,102 @@ public sealed class PostekBrowserPrintTransport : IDisposable
         // often fail the read-back with Postek retval 1001 ("incorrect data
         // format" / 数据格式错误). Padding short inputs to 12 bytes avoids
         // the read-back class failure and keeps verify-on-print predictable.
-        // Long inputs (>24 chars) are rejected — callers should fit the
-        // design in 96 bits or accept a different encoding strategy.
         epcHex = (epcHex ?? "").Trim().Replace(" ", "").Replace("-", "");
-        if (epcHex.Length == 0)
+        var withRfid = epcHex.Length > 0;
+
+        // Tight layout for the 160-dot-tall label media (73×20mm RFID
+        // inlay at 203 dpi). Coordinates match the Designer tab preview
+        // 1:1 so what the operator sees in Designer is what prints.
+        //
+        //   y=10  Fabric Name     h=30  → y=40   (position 1)
+        //   y=46  Yardage         h=56  → y=102  (headline, bold)
+        //   y=106 Divider rule    2 dots line, x=14..568
+        //   y=114 PO              h=22  → y=136
+        //   y=140 Date Printed    h=14  → y=154
+        //
+        // All coordinates are in 203-dpi dots from the label's top-left
+        // origin. Total used height: 154 / 160 — leaves 6 dots of bottom
+        // margin so no element is right at the edge.
+        //
+        // PTK_DrawText_TrueType signature: x, y, fontHeight, rotation,
+        // fontFace, bold, weight, italic, underline, strike, text
+        // (10 numeric args + text). Defaults here: Arial 1, weight 700
+        // (bold) for the headline, 400 (regular) for the rest.
+        var calls = new List<(string name, object value)>
         {
-            // Plain label, no RFID.
-            var plain = new (string name, object value)[]
-            {
-                ("PTK_OpenUSBPort", "255"),
-                ("PTK_ClearBuffer", ""),
-                ("PTK_SetDirection", "B"),
-                ("PTK_SetPrintSpeed", "4"),
-                ("PTK_SetDarkness", "10"),
-                // PTK_SetLabelHeight signature: (lheight, gapH, gapOffset, bFlag)
-                // lheight in dots, gapH in dots, gapOffset=0 (no offset),
-                // bFlag=false (gapOffset not used).
-                // For an RFID inlay like the operator's 73×20mm at 203dpi:
-                //   labelHeightDots = 20 mm * 203 / 25.4 = 160
-                //   labelGapDots    = ~3mm* 203 / 25.4 = 24
-                ("PTK_SetLabelHeight", $"{labelHeightDots},{labelGapDots},0,false"),
-                ("PTK_SetLabelWidth", $"{labelWidthDots}"),
-                // Tight layout for the 160-dot-tall label media (73×20mm
-                // RFID inlay at 203 dpi):
-                //   y=10  text line 1  (h≈22) → y=32  — primary text
-                //   y=40  Code 128     (h=80) → y=120 — encodes printText
-                //   y=124 text line 2   (h≈18) → y=142 — secondary line
-                // No QR — the previous PTK_DrawBar2D_QR at y=130 (80×80)
-                // was clipping off the bottom of the label.
-                ("PTK_DrawText_TrueType", $"10,10,22,0,Arial,1,700,0,0,0,{printText}"),
-                ("PTK_DrawBarcode",      $"10,40,0,1,2,2,80,B,{printText}"),
-                ("PTK_DrawText_TrueType", $"10,124,18,0,Arial,1,400,0,0,0,{printText}"),
-                ("PTK_PrintLabel", "1,1"),
-                ("PTK_CloseUSBPort", ""),
-            };
-            return SerializePtkCalls(plain);
+            ("PTK_OpenUSBPort",       "255"),
+            ("PTK_PcxGraphicsDel",    "*"),
+            ("PTK_ClearBuffer",       ""),
+            ("PTK_SetDirection",      "B"),
+            ("PTK_SetPrintSpeed",     "4"),
+            ("PTK_SetDarkness",       "10"),
+            ("PTK_SetLabelHeight",    $"{labelHeightDots},{labelGapDots},0,false"),
+            ("PTK_SetLabelWidth",     $"{labelWidthDots}"),
+        };
+
+        // Optional header line (kept empty until the operator wants a
+        // brand banner; PTK rejects drawing at y=0 anyway).
+        if (!string.IsNullOrWhiteSpace(headerText))
+        {
+            // Unused — leave the slot here for future use.
         }
 
-        // Validate: must be even-length hex string. nWDataNum = bytes.
-        if (epcHex.Length % 2 != 0)
-            throw new ArgumentException("EPC hex must have even length.", nameof(epcHex));
+        // ----- Fabric name (top, dark) -----
+        if (!string.IsNullOrEmpty(fabricName))
+            calls.Add(("PTK_DrawText_TrueType",
+                $"14,10,30,0,Arial,1,700,0,0,0,Fabric: {EscapePtk(fabricName)}"));
 
-        // 96-bit Gen2 EPC: 24 hex chars / 12 bytes. Pad short values with
-        // leading zeros so the encode and the read-back agree on length.
-        // Caller must keep the value ≤ 24 chars or supply only a 96-bit ID.
-        string encodedEpcHex = epcHex.Length >= 24
-            ? epcHex[..24]
-            : epcHex.PadLeft(24, '0');
-        int nWDataNum = encodedEpcHex.Length / 2;
+        // ----- Yardage (the headline) -----
+        if (!string.IsNullOrEmpty(yardageText))
+            calls.Add(("PTK_DrawText_TrueType",
+                $"14,46,56,0,Arial,1,700,0,0,0,{EscapePtk(yardageText)}"));
 
-        var withRfid = new (string name, object value)[]
+        // ----- Divider rule between Yardage and PO -----
+        // PTK_DrawLine takes x1, y1, x2, y2, width — draws a 2-dot thick
+        // line full-width across the label.
+        calls.Add(("PTK_DrawLine",
+            "14,106,568,108,2"));
+
+        // ----- PO -----
+        if (!string.IsNullOrEmpty(poText))
+            calls.Add(("PTK_DrawText_TrueType",
+                $"14,114,22,0,Arial,1,400,0,0,0,{EscapePtk(poText)}"));
+
+        // ----- Date Printed (small, bottom) -----
+        if (!string.IsNullOrEmpty(datePrinted))
+            calls.Add(("PTK_DrawText_TrueType",
+                $"14,140,14,0,Arial,1,400,0,0,0,Date Printed: {EscapePtk(datePrinted)}"));
+
+        if (withRfid)
         {
-            ("PTK_OpenUSBPort", "255"),
-            ("PTK_PcxGraphicsDel", "*"),
-            ("PTK_ClearBuffer", ""),
-            ("PTK_SetDirection", "B"),
-            ("PTK_SetPrintSpeed", "4"),
-            ("PTK_SetDarkness", "10"),
-            ("PTK_SetLabelHeight", $"{labelHeightDots},{labelGapDots},0,false"),
-            ("PTK_SetLabelWidth", $"{labelWidthDots}"),
-            // Encode FIRST so the chip is written before the label feed.
-            ("PTK_RWRFIDLabel", $"1,0,{epcStartBlock},{nWDataNum},1,{encodedEpcHex}"),
-            // Same tight layout as the no-RFID path. The text printed on
-            // the label is the caller's `printText` (sku + name, see caller
-            // in PrintService.PrintLabelJobAsync).
-            ("PTK_DrawText_TrueType", $"10,10,22,0,Arial,1,700,0,0,0,{printText}"),
-            ("PTK_DrawBarcode",      $"10,40,0,1,2,2,80,B,{printText}"),
-            ("PTK_DrawText_TrueType", $"10,124,18,0,Arial,1,400,0,0,0,{printText}"),
-            ("PTK_PrintLabel", "1,1"),
-            ("PTK_CloseUSBPort", ""),
-        };
-        return SerializePtkCalls(withRfid);
+            // 96-bit Gen2 EPC: 24 hex chars / 12 bytes. Pad short values
+            // so encode and read-back agree on length.
+            if (epcHex.Length % 2 != 0)
+                throw new ArgumentException("EPC hex must have even length.", nameof(epcHex));
+            string encodedEpcHex = epcHex.Length >= 24
+                ? epcHex[..24]
+                : epcHex.PadLeft(24, '0');
+            int nWDataNum = encodedEpcHex.Length / 2;
+            calls.Insert(8, ("PTK_RWRFIDLabel", $"1,0,{epcStartBlock},{nWDataNum},1,{encodedEpcHex}"));
+        }
+
+        calls.Add(("PTK_PrintLabel",  "1,1"));
+        calls.Add(("PTK_CloseUSBPort",""));
+
+        return SerializePtkCalls(calls.ToArray());
+    }
+
+    /// <summary>
+    /// Escape commas, quotes and backslashes for embedding into the
+    /// comma-separated PTK_Draw* argument string.
+    /// </summary>
+    private static string EscapePtk(string s)
+    {
+        if (string.IsNullOrEmpty(s)) return string.Empty;
+        return s.Replace("\\", "\\\\")
+                .Replace(",",  " ")
+                .Replace(";",  " ")
+                .Replace("\"", " ");
     }
 
     /// <summary>
@@ -341,7 +370,11 @@ public sealed class PostekBrowserPrintTransport : IDisposable
     /// </remarks>
     public async Task<bool> VerifyEncodeAsync(
         string expectedEpcHex,
-        string printText,
+        string headerText,
+        string fabricName,
+        string yardageText,
+        string poText,
+        string datePrinted,
         int labelWidthDots,
         int labelHeightDots,
         int labelGapDots,
@@ -368,7 +401,8 @@ public sealed class PostekBrowserPrintTransport : IDisposable
         {
             // Phase 1: encode + print (or just re-print on retry).
             var encodePp = BuildLabelJob(
-                printText, labelWidthDots, labelHeightDots, labelGapDots,
+                headerText, fabricName, yardageText, poText, datePrinted,
+                labelWidthDots, labelHeightDots, labelGapDots,
                 normalized, epcStartBlock);
             var encodeOk = await SendAsync("1", encodePp, ct).ConfigureAwait(false);
             if (!encodeOk)

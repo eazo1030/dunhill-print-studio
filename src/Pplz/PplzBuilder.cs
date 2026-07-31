@@ -289,7 +289,13 @@ public sealed record LabelSpec(
     bool EncodeRfid = false,
     string? Epc = null,
     byte Darkness = 8,
-    byte PrintSpeed = 4
+    byte PrintSpeed = 4,
+    // v1.2.8 — fabric-yardage layout fields. Optional for backward-
+    // compat with callers that don't supply them yet.
+    string? FabricName = null,
+    string? Yardage = null,
+    string? Po = null,
+    string? DatePrinted = null
 );
 
 public sealed record LabelDimensions(int WidthDots, int HeightDots, int GapDots = 24);

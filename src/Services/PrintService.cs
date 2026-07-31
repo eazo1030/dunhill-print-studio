@@ -248,8 +248,11 @@ public sealed class PrintService : IDisposable
             // callers should use the LabelSpec path.
             if (browserPrint is not null && browserPrint.IsConnected)
             {
+                // Fallback: route a raw PPLZ string through as a single
+                // header text line. New-arg-signature-compatible shim.
                 var wrapped = PostekBrowserPrintTransport.BuildLabelJob(
-                    pplz ?? "(empty)", 800, 600, 24, epcHex: "");
+                    pplz ?? "(empty)", "", "", "", "",
+                    800, 600, 24, epcHex: "");
                 return await browserPrint.SendAsync("1", wrapped, ct).ConfigureAwait(false);
             }
         }
@@ -284,7 +287,10 @@ public sealed class PrintService : IDisposable
         }
 
         var epc = (epcHex ?? "").Trim();
-        var text = (spec?.Sku ?? "") + (string.IsNullOrEmpty(spec?.Name) ? "" : "  " + spec.Name);
+        var fabricName = spec?.FabricName ?? spec?.Name ?? "";
+        var yardageText = spec?.Yardage ?? spec?.Sku ?? "";
+        var poText = spec?.Po ?? "";
+        var datePrinted = spec?.DatePrinted ?? DateTime.Now.ToString("MM/dd/yyyy");
 
         // Browser Print path — has full verify-on-print support.
         if (bp is not null && bp.IsConnected)
@@ -294,7 +300,8 @@ public sealed class PrintService : IDisposable
                 // Plain label, no EPC. Encode path issues one Browser Print
                 // call; we have no read-back to verify against.
                 var pp = PostekBrowserPrintTransport.BuildLabelJob(
-                    text, dims.WidthDots, dims.HeightDots, dims.GapDots, epcHex: "");
+                    "", fabricName, yardageText, poText, datePrinted,
+                    dims.WidthDots, dims.HeightDots, dims.GapDots, epcHex: "");
                 var ok = await bp.SendAsync("1", pp, ct).ConfigureAwait(false);
                 return new PrintJobOutcome(
                     ok ? PrintJobStatus.Done : PrintJobStatus.Failed,
@@ -311,7 +318,11 @@ public sealed class PrintService : IDisposable
             // default to 1 attempt to match operator expectation.
             var verified = await bp.VerifyEncodeAsync(
                 expectedEpcHex: epc,
-                printText: text,
+                headerText: "",
+                fabricName: fabricName,
+                yardageText: yardageText,
+                poText: poText,
+                datePrinted: datePrinted,
                 labelWidthDots: dims.WidthDots,
                 labelHeightDots: dims.HeightDots,
                 labelGapDots: dims.GapDots,

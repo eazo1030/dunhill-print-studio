@@ -23,7 +23,12 @@ public partial class PrintViewModel : ObservableObject
     [ObservableProperty] private string status = "Ready";
     [ObservableProperty] private string? lastError;
     [ObservableProperty] private bool isBusy;
-    [ObservableProperty] private string labelPreview = "";
+
+    // v1.2.8 — fabric yardage layout fields (printed on the label).
+    [ObservableProperty] private string fabricName = "";
+    [ObservableProperty] private string yardage = "";
+    [ObservableProperty] private string po = "";
+    [ObservableProperty] private string datePrinted = "";
 
     public ObservableCollection<string> RecentJobs { get; } = new();
 
@@ -35,22 +40,20 @@ public partial class PrintViewModel : ObservableObject
     // below if you switch media later.
     public LabelDimensions Dims { get; } = new(583, 160);
 
-    partial void OnSkuChanged(string value) => UpdatePreview();
-    partial void OnItemNameChanged(string value) => UpdatePreview();
-    partial void OnQuantityChanged(int value) => UpdatePreview();
-    partial void OnSerialChanged(string? value) => UpdatePreview();
-    partial void OnEpcChanged(string? value) => UpdatePreview();
+    partial void OnSkuChanged(string value) { /* form binding — preview removed in v1.2.7 */ }
+    partial void OnItemNameChanged(string value) { /* same */ }
+    partial void OnQuantityChanged(int value) { /* same */ }
+    partial void OnSerialChanged(string? value) { /* same */ }
+    partial void OnEpcChanged(string? value) { /* same */ }
+    partial void OnFabricNameChanged(string value) { /* same */ }
+    partial void OnYardageChanged(string value) { /* same */ }
+    partial void OnPoChanged(string value) { /* same */ }
+    partial void OnDatePrintedChanged(string value) { /* same */ }
+    partial void OnEncodeRfidChanged(bool value) { /* same */ }
 
-    private void UpdatePreview()
-    {
-        if (string.IsNullOrWhiteSpace(Sku))
-        {
-            LabelPreview = "(enter SKU to preview)";
-            return;
-        }
-        var spec = new LabelSpec(Sku, ItemName, Quantity, Serial, EncodeRfid: EncodeRfid, Epc: Epc);
-        LabelPreview = PplzBuilder.BuildItemLabel(spec, Dims);
-    }
+    // v1.2.7: PPLZ preview removed per operator request. The actual
+    // print command stream still gets built server-side; the operator
+    // sees the result on the physical label, not in a code pane.
 
     [RelayCommand]
     private async Task PrintAsync()
@@ -72,7 +75,10 @@ public partial class PrintViewModel : ObservableObject
         Status = "Printing…";
         try
         {
-            var spec = new LabelSpec(Sku, ItemName, Quantity, Serial, Epc: Epc, EncodeRfid: EncodeRfid);
+            var spec = new LabelSpec(Sku, ItemName, Quantity, Serial,
+                Epc: Epc, EncodeRfid: EncodeRfid,
+                FabricName: FabricName, Yardage: Yardage,
+                Po: Po, DatePrinted: DatePrinted);
             PrintJobOutcome outcome;
             try
             {
@@ -121,6 +127,7 @@ public partial class PrintViewModel : ObservableObject
     private void ClearForm()
     {
         Sku = ""; ItemName = ""; Quantity = 1; Serial = null; Epc = null; EncodeRfid = false;
+        FabricName = ""; Yardage = ""; Po = ""; DatePrinted = "";
         Status = "Ready"; LastError = null;
     }
 }
