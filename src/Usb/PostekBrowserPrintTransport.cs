@@ -228,16 +228,38 @@ public sealed class PostekBrowserPrintTransport : IDisposable
         //   Date:     y=140, h=20
         //   Bottom margin = 236 − (140+20) = 76 dots ~ 6 mm.
         //
+        // v1.2.17 — Y-axis calibration after PTK_SetDirection("T") actually
+        // flipped the Y axis the OPPOSITE of my v1.2.16 assumption.
+        //
+        // v1.2.16 result (operator-confirmed from photo): origin sits at
+        // BOTTOM-LEFT of the inlay, X grows RIGHT (good!), Y grows UP
+        // (inverted — Y=4 puts text at the very bottom of the inlay,
+        // not at the top). So my layout was upside-down: I sent Fabric
+        // at y=4 expecting "near the top" but it landed at "near the
+        // bottom" because Y is measured from the bottom.
+        //
+        // Fix: keep the v1.2.16 11-arg-no-id-name-and-(0,0)-at-bottom-left
+        // model, but send Y values so that:
+        //   - small Y → bottom of the inlay (where we want Date)
+        //   - large Y → top of the inlay (where we want Fabric)
+        //
+        // Layout (origin (0,0) at bottom-left, Y grows up):
+        //   Date:      y=20,  h=20   → sits 0–40 dots above bottom
+        //   PO:        y=50,  h=24   → 50–74 dots above bottom
+        //   Yardage:   y=82,  h=64   → 82–146 dots above bottom (headline band)
+        //   Fabric:    y=156, h=36   → 156–192 dots above bottom (top band)
+        //   Top margin: 236 − (156+36) = 44 dots ~ 3.7 mm
+        //
         // ZR300I = 300 DPI: 73 × 20 mm inlay → 862 × 236 dots.
 
-        const int FabricY = 4;
-        const int FabricH = 36;
-        const int YardY   = 44;
-        const int YardH   = 64;
-        const int PoY     = 112;
-        const int PoH     = 24;
-        const int DateY   = 140;
+        const int DateY   = 20;   // bottom (small DatePrinted)
         const int DateH   = 20;
+        const int PoY     = 50;
+        const int PoH     = 24;
+        const int YardY   = 82;    // headline band
+        const int YardH   = 64;
+        const int FabricY = 156;   // top (Fabric name)
+        const int FabricH = 36;
 
         var calls = new List<(string name, object value)>
         {
