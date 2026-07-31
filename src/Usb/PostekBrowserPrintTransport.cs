@@ -198,22 +198,38 @@ public sealed class PostekBrowserPrintTransport : IDisposable
         //     ~70 mm × 18 mm (the operator's photo shows the inlay
         //     within a clear backing-film border on each side).
         //
-        //   v1.2.14 — origin-offset hypothesis abandoned.
-        //     The empirical +30 dot offset (v1.2.13) made things WORSE
-        //     (text wrapped to the bottom-left instead of centering).
-        //     The printer's coordinate (0,0) is somewhere we cannot
-        //     model without either: (a) actual PTK reference docs, or
-        //     (b) successful prints from which to bisect. We have
-        //     neither. Default to 0 (use the printer's own origin);
-        //     if v1.2.14 still misses we go back to bisection.
-        const int OriginOffsetDots = 0;
-        const int VisibleLeftInsetDots   = 18;   // 18 ≈ 1.5 mm
+        // v1.2.15 — printer origin is *inside* the visible inlay.
+        //     v1.2.14 (X=18) clipped 'F' of 'Fabric:' at the left edge.
+        //     v1.2.13 (X=48) wrapped text to the bottom-left of the inlay.
+        //
+        //     Consistent observation: the printer's coordinate origin
+        //     (0,0) is to the RIGHT of the visible inlay's left edge by
+        //     a positive amount. To position text at the visible inlay's
+        //     left edge plus a small inset, send x = visible_inset − k,
+        //     where k is the (negative) printer origin.
+        //
+        //     Bisection estimate from v1.2.13 + v1.2.14 results:
+        //       X=48  → text begins ~30 dots past the inlay right edge
+        //               (wrapped around to bottom-left, suggesting the
+        //                origin is right of where I thought it was)
+        //       X=18  → text begins ~12 dots past the inlay left edge
+        //               (the 'F' of 'Fabric:' is half-clipped)
+        //     → origin offset is +30 dots (positive). The visible inlay
+        //       left edge is at −30 in printer coordinates.
+        //
+        //     Linear-ish interpolation: x_visible = x_sent − 30.
+        //     For 1.5 mm (~18 dots) visible inset → x_sent = −12.
+        //     PTK may accept negative coordinates (reflective of physical
+        //     label width); if it doesn't, expect an immediate retval
+        //     error and we'll know the offset is wrong-direction.
+        const int OriginOffsetDots = -30;       // visible-left = printer x = -30
+        const int VisibleLeftInsetDots   = 0;   // no left padding; reaches full width
         const int VisibleRightInsetDots  = 18;
-        const int VisibleTopInsetDots    = 18;   // ≈ 1.5 mm
+        const int VisibleTopInsetDots    = 14;
         const int VisibleBottomInsetDots = 14;
 
-        int X0 = VisibleLeftInsetDots + OriginOffsetDots;       // 18
-        int Y0 = VisibleTopInsetDots  + OriginOffsetDots;       // 18
+        int X0 = 0;     // printer origin at left margin, no left padding
+        int Y0 = 0;     // printer origin at top margin, no top padding
 
         // Vertical layout for the inlay at 300 dpi (236 dots of total
         // label height). All Y coordinates are absolute printer dots
