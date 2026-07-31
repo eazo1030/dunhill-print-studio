@@ -241,10 +241,13 @@ public sealed class PostekBrowserPrintTransport : IDisposable
             calls.Add(("PTK_DrawText_TrueType",
                 $"14,62,80,0,Arial,1,700,0,0,0,A1,{EscapePtk(yardageText)}"));
 
-        // ----- Divider rule between Yardage and PO -----
-        // PTK_DrawLine(x1,y1,x2,y2,width) — full width across the label.
-        calls.Add(("PTK_DrawLine",
-            "14,150,848,152,3"));
+        // ----- (Divider rule removed in v1.2.11) -----
+        // Browser Print does not export a "PTK_DrawLine" method —
+        // calling it aborts the whole encode job with retval=-1
+        // ("PTK_DrawLinenot found"). Original v1.2.4–v1.2.7 layout had
+        // no divider; it relied on vertical spacing between Yardage and
+        // PO to visually separate the two. Restoring that simpler
+        // layout eliminates the void-label regression.
 
         // ----- PO -----
         if (!string.IsNullOrEmpty(poText))
