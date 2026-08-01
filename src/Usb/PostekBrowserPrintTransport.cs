@@ -228,39 +228,32 @@ public sealed class PostekBrowserPrintTransport : IDisposable
         //   Date:     y=140, h=20
         //   Bottom margin = 236 − (140+20) = 76 dots ~ 6 mm.
         //
-        // v1.2.23 — operator's v1.2.22 photo is the breakthrough: top-down
-        // order correct, but Fabric clipped on the right. Root cause:
-        // B-direction actually places Anchor X at the GLYPH's LEFT
-        // EDGE (not right edge as I assumed in v1.2.22). X grows to the
-        // RIGHT in B-direction on this ZR300I. The glyph extends
-        // rightward from X.
+        // v1.2.24 — operator's v1.2.23 photo shows the layout is correct
+        // (Fabric biggest at top, Yardage bold in mid, Date Printed at
+        // bottom), but the LEFT edge of every glyph is being clipped —
+        // "Fabric:" prints as "abric:". The 'F' is being clipped past
+        // the visible inlay's left edge. So my Anchor X = 14 was too
+        // far left — there's an additional internal margin of ~30 dots
+        // (~2.5 mm) past the visible inlay boundary that I didn't model.
         //
-        // v1.2.22 used X=156 (= inlay_width − estimated width). With X as
-        // the LEFT edge, that put the left edge of "Fabric: Artistry"
-        // 156 dots inside — so the visible right portion is the LAST
-        // 700 dots of the glyph: "A:istry". Confirmed by operator photo.
-        //
-        // v1.2.23: Anchor X = small left-margin value (≈14 dots ≈ 1.2 mm).
-        // Glyph extends rightward from there. For "Fabric: Artistry"
-        // at h=84 (≈ 700 dots wide), right edge of glyph = X + 700 =
-        // 714 → fits inside 862-dot inlay with 148 dots of right margin.
-        //
-        // Y values from v1.2.21 worked (small Y = top, large Y = bottom)
-        // — keep them. HeaderText slot left as a future-use no-op.
+        // v1.2.23 used X=14 (≈1.2mm). v1.2.24 bumps to X=50 (≈4.2mm) so
+        // the F of Fabric lands a bit further inside the printable area.
+        // The right edge of "Fabric: Artistry" at h=84 with this anchor
+        // would still be at X = 50 + 700 ≈ 750 (fits in 862).
 
         const int InlayWidthDots      = 862;
         const int FabricY             = 4;
-        const int FabricH             = 84;    // BIGGEST
-        const int FabricX             = 14;    // near LEFT edge of inlay
+        const int FabricH             = 84;
+        const int FabricX             = 50;    // bumped from 14 → 50
         const int YardY               = 92;
         const int YardH               = 72;
-        const int YardX               = 14;
+        const int YardX               = 50;    // bumped from 14 → 50
         const int PoY                 = 170;
         const int PoH                 = 32;
-        const int PoX                 = 14;
+        const int PoX                 = 50;
         const int DateY               = 204;
         const int DateH               = 24;
-        const int DateX               = 14;
+        const int DateX               = 50;
 
         var calls = new List<(string name, object value)>
         {
