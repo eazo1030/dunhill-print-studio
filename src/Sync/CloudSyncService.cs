@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using Dunhill.PrintStudio.Pplz;
 using Dunhill.PrintStudio.Services;
 
+using Dunhill.PrintStudio.Models;
 namespace Dunhill.PrintStudio.Sync;
 
 /// <summary>
