@@ -17,7 +17,7 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string tcpHost = "";
     [ObservableProperty] private int tcpPort = 9100;
     [ObservableProperty] private string browserPrintEndpoint = "http://127.0.0.1:888/postek/print";
-    [ObservableProperty] private string? authToken = "73953f4d484c1ed0b8c0fa5400241ef8735d0720ce607c1e1697a6c660b4eb6d";
+    [ObservableProperty] private string? authToken = "ec4c38b989417e2c55f48d4c7b4122074a5318c6b3c51bbba813d1509bf62c0f";
     [ObservableProperty] private string cloudUrl = "https://dunhill-inventory-service.vercel.app";
     [ObservableProperty] private string status = "Disconnected";
     [ObservableProperty] private string? lastError;
