@@ -49,7 +49,7 @@ public sealed class CloudSyncService : BackgroundService
     private readonly SyncConfig _cfg;
     private readonly PrintService _printer;
     private string _baseUrl = "https://dunhill-inventory-service.vercel.app";
-    private string _authToken = "ec4c38b989417e2c55f48d4c7b4122074a5318c6b3c51bbba813d1509bf62c0f";
+    private string _authToken = "ae7952534dba20ab3f39cd7efa11330b33fbec546827a45852335456b228694e";
     private string _agentName = Environment.MachineName;
     private int _backoffSeconds = 0;
 
