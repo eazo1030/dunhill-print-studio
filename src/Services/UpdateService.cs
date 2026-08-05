@@ -14,11 +14,19 @@ public sealed class UpdateService
 {
     private const string GitHubRepoUrl = "https://github.com/eazo1030/dunhill-print-studio";
 
+    // Fine-grained PAT scoped to read-only on dunhill-print-studio. Required so
+    // Velopack can fetch the RELEASES manifest + .nupkg from this PRIVATE repo.
+    // Anonymous access was broken when the repo went private. The PAT is only
+    // good for read access to releases; it has no write scope on any repo.
+    // Rotation: generate a new fine-grained PAT in the GitHub web UI with
+    // Contents=Read on dunhill-print-studio and replace this string.
+    private const string UpdateAccessToken = "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";
+
     private readonly UpdateManager _mgr;
 
     public UpdateService()
     {
-        _mgr = new UpdateManager(new GithubSource(GitHubRepoUrl, accessToken: null, prerelease: false));
+        _mgr = new UpdateManager(new GithubSource(GitHubRepoUrl, accessToken: UpdateAccessToken, prerelease: false));
     }
 
     /// <summary>Version of the binary currently running (e.g. "1.0.0").</summary>
