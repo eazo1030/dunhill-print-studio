@@ -14,13 +14,12 @@ public sealed class UpdateService
 {
     private const string GitHubRepoUrl = "https://github.com/eazo1030/dunhill-print-studio";
 
-    // Fine-grained PAT scoped to read-only on dunhill-print-studio. Required so
-    // Velopack can fetch the RELEASES manifest + .nupkg from this PRIVATE repo.
-    // Anonymous access was broken when the repo went private. The PAT is only
-    // good for read access to releases; it has no write scope on any repo.
-    // Rotation: generate a new fine-grained PAT in the GitHub web UI with
-    // Contents=Read on dunhill-print-studio and replace this string.
-    private const string UpdateAccessToken = "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";
+    // Repo is PUBLIC (flipped 2026-08-05 to fix Velopack auto-update). Anonymous
+    // CDN access works, so no access token is passed. If the repo ever goes
+    // private again, this will need a *classic* PAT with `repo` scope —
+    // fine-grained PATs return 404 on github.com/.../releases/download/ URLs
+    // (only the API endpoint accepts them). See EVIDENCE/velopack-feed-probe.json.
+    private const string? UpdateAccessToken = null;
 
     private readonly UpdateManager _mgr;
 
