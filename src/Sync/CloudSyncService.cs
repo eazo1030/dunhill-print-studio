@@ -14,20 +14,25 @@ namespace Dunhill.PrintStudio.Sync;
 /// Bidirectional sync with the dunhill-inventory-service on Vercel (Phase 1+).
 ///
 /// Pull:   pending cloud jobs → GET  /api/jobs/pending?agent=&lt;name&gt;
+/// EPC:    POST /api/epc/next → deterministic counter-per-(fabric,color,yardage) 24-hex
 /// Print:  PrintService.PrintLabelJobAsync() with a LabelSpec built from the
-///         cloud payload. EPC is generated locally (random 24-hex) since the
-///         website doesn't pre-assign one.
+///         cloud payload. The EPC from /api/epc/next is passed as epcHex so
+///         the printer writes exactly the pre-allocated EPC (no local random).
 /// Push:   result            → POST /api/print-events
 /// Auth:   Bearer token in the Authorization header (PRINT_API_TOKEN).
 ///
 /// Lifecycle (one poll cycle):
 ///   1. GET /api/jobs/pending → server atomically claims oldest queued job
 ///      and returns { job: {...}, queue_empty: bool }. Empty queue → sleep.
-///   2. Convert job payload to LabelSpec (FabricName, Color, Yardage, Po=Epc).
-///   3. PrintService.PrintLabelJobAsync() — sends PPLZ to the connected
+///   2. POST /api/epc/next { fabric, color, yardage } → returns
+///      { epc, counter_value, namespace }. If the call fails (network down
+///      or 5xx), fall back to local random generation so a single transient
+///      failure doesn't stall the whole queue.
+///   3. Convert job payload to LabelSpec (FabricName, Color, Yardage, Po=Epc).
+///   4. PrintService.PrintLabelJobAsync() — sends PPLZ to the connected
 ///      Postek transport (spooler/USB/TCP/browser-print), reads back the
 ///      EPC it just wrote to the inlay, returns a PrintJobOutcome.
-///   4. POST /api/print-events with { job_id, epc, state, error? }.
+///   5. POST /api/print-events with { job_id, epc, state, error? }.
 ///
 /// Failure handling:
 ///   - Network errors retry with exponential backoff (1, 2, 4, 8, 16 s),
@@ -158,7 +163,12 @@ public sealed class CloudSyncService : BackgroundService
 
         OnEvent?.Invoke(this, new CloudEvent(CloudEventKind.JobReceived, job.Id, job));
 
-        // 2. Build LabelSpec from cloud payload
+        // 2.5. Get deterministic EPC from cloud (counter-per-(fabric,color,yardage)).
+        //      If the call fails for any reason, fall back to local random so a
+        //      single transient failure doesn't stall the queue.
+        string? epc = await TryGetDeterministicEpcAsync(http, job, ct);
+
+        // 3. Build LabelSpec from cloud payload
         var spec = new LabelSpec(
             Sku: job.Sku ?? "",
             Name: job.Fabric,
@@ -173,11 +183,11 @@ public sealed class CloudSyncService : BackgroundService
         // Label dims match what the website's print-studio.js uses (862×236 = 73×20mm @ 300 DPI).
         var dims = new LabelDimensions(WidthDots: 862, HeightDots: 236, GapDots: 24);
 
-        // 3. Actually print
+        // 4. Actually print with the deterministic EPC (or null → local random fallback)
         PrintJobOutcome outcome;
         try
         {
-            outcome = await _printer.PrintLabelJobAsync(spec, dims, epcHex: null, ct);
+            outcome = await _printer.PrintLabelJobAsync(spec, dims, epcHex: epc, ct);
         }
         catch (Exception ex)
         {
@@ -185,16 +195,64 @@ public sealed class CloudSyncService : BackgroundService
             outcome = new PrintJobOutcome(PrintJobStatus.Failed, null, ex.Message);
         }
 
-        // 4. Report result
+        // 5. Report result
         var state = outcome.IsSuccess ? "succeeded" : "failed";
-        var epc   = outcome.ReadbackHex;
+        var reportedEpc = outcome.ReadbackHex ?? epc;
         var error = outcome.IsSuccess ? null : outcome.Error ?? "print_failed";
 
-        await ReportCompletionAsync(job.Id, state, epc, error, ct);
+        await ReportCompletionAsync(job.Id, state, reportedEpc, error, ct);
 
         OnEvent?.Invoke(this, new CloudEvent(
             CloudEventKind.JobCompleted, job.Id,
-            new { job_id = job.Id, state, epc, error }));
+            new { job_id = job.Id, state, epc = reportedEpc, error }));
+    }
+
+    /// <summary>
+    /// Call POST /api/epc/next to get a deterministic 24-hex EPC for this (fabric, color, yardage).
+    /// Returns null on any failure — the caller falls back to PrintService's local random EPC.
+    /// </summary>
+    private async Task<string?> TryGetDeterministicEpcAsync(HttpClient http, PrintJobPayload job, CancellationToken ct)
+    {
+        try
+        {
+            var req = new
+            {
+                fabric = job.Fabric,
+                color = job.Color,
+                yardage = job.Yardage,
+            };
+            var resp = await http.PostAsJsonAsync($"{_baseUrl}/api/epc/next", req, ct);
+            if (!resp.IsSuccessStatusCode)
+            {
+                _log.LogWarning("EPC next endpoint returned HTTP {Code}; falling back to local random",
+                    (int)resp.StatusCode);
+                return null;
+            }
+            var payload = await resp.Content.ReadFromJsonAsync<EpcNextResponse>(cancellationToken: ct);
+            if (payload == null || string.IsNullOrEmpty(payload.Epc))
+            {
+                _log.LogWarning("EPC next endpoint returned empty body; falling back to local random");
+                return null;
+            }
+            _log.LogDebug("Allocated EPC {Epc} (counter={Counter}, namespace={Ns})",
+                payload.Epc, payload.CounterValue, payload.Namespace);
+            return payload.Epc;
+        }
+        catch (HttpRequestException ex)
+        {
+            _log.LogWarning(ex, "Network error fetching EPC from cloud; falling back to local random");
+            return null;
+        }
+        catch (TaskCanceledException)
+        {
+            // propagate cancellation — let the caller handle it
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Unexpected error fetching EPC; falling back to local random");
+            return null;
+        }
     }
 
     public async Task ReportCompletionAsync(
@@ -249,6 +307,13 @@ public sealed record PrintJobPayload(
     [property: JsonPropertyName("yardage")] double? Yardage,
     [property: JsonPropertyName("ul")] string? Ul,
     [property: JsonPropertyName("epc")] string? Epc
+);
+
+// Wire format from /api/epc/next
+public sealed record EpcNextResponse(
+    [property: JsonPropertyName("epc")] string Epc,
+    [property: JsonPropertyName("counter_value")] long CounterValue,
+    [property: JsonPropertyName("namespace")] string Namespace
 );
 
 public enum CloudEventKind { JobReceived, AuthRequired, JobCompleted, ConnectionLost }
